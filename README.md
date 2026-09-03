@@ -170,6 +170,10 @@ um test run nunca sobrescrever a config real de um usuário:
 - `OA_DRY_TEST=<amsID>:<tipo>:<tempC>:<horas>` /
   `OA_DRY_STOP_TEST=<amsID>` — envia um comando real de secagem/parada pro
   AMS, contra hardware de verdade.
+- `OA_PRINT_AMS_STATUS=1` — conecta e imprime o status real de cada slot do
+  AMS (filamento, umidade, secagem ativa) a cada ~2s por ~80s, depois sai.
+  Usado pra descobrir o amsID/tipo de filamento reais antes de rodar
+  `OA_DRY_TEST` com valores corretos, em vez de adivinhar.
 - `OA_ISOLATED_DEFAULTS=1` — força o namespace descartável sem nenhum dos
   efeitos acima.
 - `OA_ACCESS_CODE_OVERRIDE=<valor>` — pula a leitura do Keychain (que

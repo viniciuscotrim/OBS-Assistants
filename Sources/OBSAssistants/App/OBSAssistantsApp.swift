@@ -92,6 +92,31 @@ struct OBSAssistantsApp: App {
                         state.stopDrying(amsID: amsID)
                     }
                 }
+            } else if ProcessInfo.processInfo.environment["OA_PRINT_AMS_STATUS"] == "1" {
+                // Diagnostic-only, real hardware: connects and prints every
+                // AMS slot's real detected filament type/humidity/active-
+                // drying status as reports come in (every ~2s, for ~80s,
+                // then exits) — used to find the real amsID/filamentType to
+                // pass to OA_DRY_TEST instead of guessing at values that
+                // don't match what's actually loaded on the printer.
+                state.connectPrinter()
+                Task {
+                    for _ in 0..<40 {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        await MainActor.run {
+                            if state.amsSlots.isEmpty {
+                                print("[AMSStatus] no AMS data yet (status: \(state.connectionStatus))")
+                            }
+                            for slot in state.amsSlots {
+                                let humidityStr = slot.humidityPercent != nil ? "\(slot.humidityPercent!)" : "n/a"
+                                let indexStr = slot.humidityIndex != nil ? "\(slot.humidityIndex!)" : "n/a"
+                                let tempStr = slot.chamberTemperatureC != nil ? "\(slot.chamberTemperatureC!)" : "n/a"
+                                print("[AMSStatus] ams=\(slot.amsID) tray=\(slot.trayIndex) filament=\(slot.filamentTypeDisplay) loaded=\(slot.hasFilamentLoaded) humidity%=\(humidityStr) humidityIndex=\(indexStr) activeDrying=\(String(describing: slot.activeDrying)) chamberTempC=\(tempStr)")
+                            }
+                        }
+                    }
+                    exit(0)
+                }
             } else if let testPayloadPath = ProcessInfo.processInfo.environment["OA_TEST_PAYLOAD"] {
                 // Dry-run mode: replay a captured report instead of connecting
                 // to a real printer. See README "Testing without hardware".
