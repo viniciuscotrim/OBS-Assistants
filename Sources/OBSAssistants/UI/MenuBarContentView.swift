@@ -3,14 +3,18 @@ import SwiftUI
 import AppKit
 #endif
 
-/// The small menu-bar popover — connection to the printer only. Everything
-/// else (composites, AMS drying, HTTP server/appearance, field selection,
-/// and the separate Bambu Studio slicing-info overlay) lives in two
-/// full-size windows opened from here, since the single popover holding
-/// all of it had grown too large to navigate comfortably. See
+/// The small menu-bar popover — printer connection, plus the compact
+/// "Now Playing" section. Everything heavier on the printer side
+/// (composites, AMS drying, HTTP server/appearance, field selection, and
+/// the separate Bambu Studio slicing-info overlay) lives in two full-size
+/// windows opened from here instead, since the single popover holding all
+/// of it had grown too large to navigate comfortably. See
 /// PrinterOverlayView / StudioOverlayView and their window controllers.
+/// "Now Playing" stays inline since it's just as compact as it was as its
+/// own standalone app's menu — see NowPlayingSectionView / NowPlayingState.
 struct MenuBarContentView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var nowPlayingState: NowPlayingState
     @ObservedObject private var settings = AppSettings.shared
 
     @State private var showCertSection = false
@@ -32,6 +36,9 @@ struct MenuBarContentView: View {
 
                 Divider()
                 overlayWindowButtons
+
+                Divider()
+                NowPlayingSectionView(nowPlaying: nowPlayingState)
             }
             .padding(16)
 

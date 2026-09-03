@@ -3,6 +3,10 @@ import SwiftUI
 @main
 struct OBSAssistantsApp: App {
     @StateObject private var appState: AppState
+    // Independent feature, independent state — starts its own Music.app
+    // poller and HTTP server (own port) right away, same "just works at
+    // launch" behavior as the printer overlay below. See NowPlayingState.
+    @StateObject private var nowPlayingState = NowPlayingState()
 
     init() {
         // Unbuffered stdout so `print()` diagnostics (discovery, etc.) show
@@ -110,6 +114,7 @@ struct OBSAssistantsApp: App {
         MenuBarExtra {
             MenuBarContentView()
                 .environmentObject(appState)
+                .environmentObject(nowPlayingState)
         } label: {
             Image(systemName: statusIcon)
         }
