@@ -11,7 +11,8 @@ let package = Package(
             name: "OBSAssistants",
             path: "Sources/OBSAssistants",
             exclude: [
-                "App/Info.plist"
+                "App/Info.plist",
+                "App/OBSAssistants.entitlements"
             ],
             linkerSettings: [
                 // Embeds Info.plist into the built executable so it can run as a

@@ -7,6 +7,14 @@ todos rodando juntos no mesmo processo/ícone da barra de menu.
 
 **Created by Vinicius Cotrim.**
 
+## Licença
+
+Todos os direitos reservados — ver [LICENSE](LICENSE). O código-fonte é
+público neste repositório só pra referência/transparência; não é
+permitido copiar, redistribuir ou publicar derivados sem autorização por
+escrito do autor. O app compilado é distribuído separadamente (GitHub
+Releases hoje; Mac App Store futuramente).
+
 ---
 
 ## Os três overlays
@@ -191,20 +199,55 @@ automatizados: `swift build -c release` (universal arm64+x86_64 quando o
 toolchain suporta, senão nativo) → monta o `.app` → `codesign` → empacota o
 `.dmg`.
 
-- **Assinatura**: usa a identidade local "OBS Assistants Local Dev" se ela
-  já existir no keychain de login, senão cai pra ad-hoc (`--sign -`). Uma
-  identidade estável evita ter que reconfigurar o Keychain (Access
-  Code/senha do `.p12`) a cada rebuild — veja o comentário no topo do
-  script pra criar a identidade uma vez.
+- **Assinatura**: o script escolhe automaticamente, em ordem de
+  preferência: `Developer ID Application` (certificado real da Apple, ver
+  "Distribuição" abaixo) → `OBS Assistants Local Dev` (identidade local
+  autoassinada) → ad-hoc (`--sign -`) como último recurso. Uma identidade
+  estável (qualquer uma das duas primeiras) evita ter que reconfigurar o
+  Keychain (Access Code/senha do `.p12`) a cada rebuild — veja o
+  comentário no topo do script pra criar a identidade local, ou a seção
+  abaixo pra usar uma conta paga de desenvolvedor Apple.
 - **`.dmg`**: usa `create-dmg` (`brew install create-dmg`) se disponível,
   pra um volume com ícone customizado; senão cai automaticamente pra um
   `.dmg` simples via `hdiutil` (só o que o macOS já traz).
-- **Gatekeeper**: não é notarizado (identidade local/ad-hoc, não uma conta
-  paga de desenvolvedor Apple) — no primeiro launch, clique com botão
-  direito no app → Abrir (uma vez), ou:
-  ```bash
-  xattr -cr "/Applications/OBS Assistants.app"
-  ```
+
+## Distribuição (Developer ID + notarização)
+
+Com uma conta paga de desenvolvedor Apple, o app pode ser assinado e
+**notarizado** — Gatekeeper para de bloquear pra qualquer pessoa que baixe
+o `.dmg`, sem precisar de `xattr`/clique-direito. Setup único:
+
+1. **Keychain Access** → Certificate Assistant → Request a Certificate
+   from a Certificate Authority → gera um `.certSigningRequest` (e já
+   guarda a chave privada correspondente no seu keychain).
+2. [developer.apple.com/account/resources/certificates](https://developer.apple.com/account/resources/certificates)
+   → "+" → **Developer ID Application** → suba o CSR → baixe o `.cer`.
+3. Duplo clique no `.cer` baixado — instala a identidade completa
+   (casando com a chave privada do passo 1).
+4. Crie uma senha de app em [appleid.apple.com](https://appleid.apple.com)
+   (Sign-In and Security → App-Specific Passwords) e rode:
+   ```bash
+   xcrun notarytool store-credentials "OBSAssistantsNotary" \
+     --apple-id "seu@email.com" --team-id "SEUTEAMID" --password "senha-de-app-gerada"
+   ```
+
+Depois disso, `./build_dmg.sh` detecta a identidade Developer ID sozinho,
+assina com hardened runtime + entitlements
+(`Sources/OBSAssistants/App/OBSAssistants.entitlements`), submete pra
+notarização (`xcrun notarytool submit ... --wait`) e faz o *staple* do
+ticket no `.dmg` e no `.app` automaticamente — nenhuma senha fica
+armazenada no script, só o nome do perfil (`OBSAssistantsNotary`) salvo no
+Keychain pelo comando acima.
+
+Sem nenhuma das duas identidades configuradas, o script cai pro fallback
+ad-hoc e mostra o aviso de Gatekeeper de sempre:
+```bash
+xattr -cr "/Applications/OBS Assistants.app"
+```
+
+Ver [docs/AppStoreReadiness.md](docs/AppStoreReadiness.md) pro plano —
+ainda não implementado — de levar isso pra distribuição via Mac App Store
+(App Sandbox, entitlements por feature, o que precisa mudar em cada uma).
 
 ## Estrutura
 
@@ -215,6 +258,7 @@ Sources/OBSAssistants/
     OBSAssistantsApp.swift      — entry point (MenuBarExtra), flags de diagnóstico
     AppState.swift               — coordenador central: MQTT + os 2 servidores HTTP (impressora/Studio)
     Info.plist                   — bundle info do .app
+    OBSAssistants.entitlements   — hardened runtime (Developer ID/notarização); base pro futuro App Sandbox
   Settings/
     AppSettings.swift            — todas as configs persistidas (UserDefaults + Keychain)
   MQTT/
@@ -247,7 +291,10 @@ Sources/OBSAssistants/
     DryConfirmationView.swift, DryConfirmationWindowController.swift — confirmação de início de secagem
   Security/
     KeychainHelper.swift          — leitura/escrita no Keychain (Access Code, senha do .p12)
-build_dmg.sh                      — build → .app → .dmg (saída em dist/)
+build_dmg.sh                      — build → .app → .dmg (saída em dist/), assina/notariza quando possível
+docs/
+  AppStoreReadiness.md              — plano (não implementado) pra distribuição via Mac App Store
+LICENSE                             — todos os direitos reservados
 ```
 
 ---

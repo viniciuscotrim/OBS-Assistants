@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Hardened runtime (required for notarization) doesn't gate plain
+	     network sockets — that's an App Sandbox-only restriction, not
+	     applicable to this non-sandboxed Developer ID build — but it does
+	     gate sending Apple Events to another app (Music.app, for the Now
+	     Playing overlay), same as under full sandbox. See the App Store
+	     readiness doc (docs/AppStoreReadiness.md) for what else changes
+	     if/when this app is sandboxed for Mac App Store distribution. -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+</dict>
+</plist>
