@@ -47,6 +47,17 @@ struct LabeledNumberField: View {
     }
 }
 
+/// Author credit — shown in the root menu-bar popover's footer and at the
+/// bottom of every overlay's settings window (Impressora / Bambu Studio /
+/// Now Playing), so it's visible wherever in the app someone might land.
+struct CreditsFooter: View {
+    var body: some View {
+        Text("Created by Vinicius Cotrim")
+            .font(.system(size: 9))
+            .foregroundStyle(.tertiary)
+    }
+}
+
 func sectionLabel(_ text: String) -> some View {
     Text(text.uppercased())
         .font(.system(size: 10, weight: .bold))

@@ -43,6 +43,9 @@ struct PrinterOverlayView: View {
 
                 Divider()
                 fieldsSection
+
+                Divider()
+                CreditsFooter()
             }
             .padding(16)
         }

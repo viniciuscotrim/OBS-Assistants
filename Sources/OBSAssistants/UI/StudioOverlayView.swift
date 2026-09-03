@@ -45,6 +45,9 @@ struct StudioOverlayView: View {
 
                 Divider()
                 appearanceSection
+
+                Divider()
+                CreditsFooter()
             }
             .padding(16)
         }

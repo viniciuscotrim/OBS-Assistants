@@ -312,14 +312,17 @@ struct MenuBarContentView: View {
     // MARK: Footer
 
     private var footer: some View {
-        HStack {
-            Text("v1.0.0")
-                .font(.system(size: 9))
-                .foregroundStyle(.tertiary)
-            Spacer()
-            Button("Sair") {
-                NSApplication.shared.terminate(nil)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("v1.0.0")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                Button("Sair") {
+                    NSApplication.shared.terminate(nil)
+                }
             }
+            CreditsFooter()
         }
     }
 }

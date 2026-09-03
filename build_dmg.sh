@@ -26,8 +26,10 @@
 #     -k ~/Library/Keychains/login.keychain-db /tmp/oa.crt
 #   rm /tmp/oa.key /tmp/oa.crt /tmp/oa.p12
 #
-# Requirements: Swift toolchain (Xcode or Xcode Command Line Tools),
-# create-dmg (`brew install create-dmg`).
+# Requirements: Swift toolchain (Xcode or Xcode Command Line Tools) only.
+# `create-dmg` (`brew install create-dmg`) is optional — used for a nicer
+# .dmg (custom icon layout/background) when present; otherwise this falls
+# back to a plain .dmg via `hdiutil` alone, which ships with macOS.
 set -euo pipefail
 
 SIGNING_IDENTITY="OBS Assistants Local Dev"
@@ -88,28 +90,39 @@ echo "==> Packaging .dmg"
 mkdir -p "$DIST_DIR"
 rm -f "$DMG_PATH"
 
-if ! command -v create-dmg >/dev/null 2>&1; then
-    echo "error: create-dmg not found. Install with: brew install create-dmg" >&2
-    exit 1
+if command -v create-dmg >/dev/null 2>&1; then
+    create-dmg \
+        --volname "$APP_NAME" \
+        --window-pos 200 120 \
+        --window-size 600 380 \
+        --icon-size 100 \
+        --icon "$APP_NAME.app" 150 180 \
+        --hide-extension "$APP_NAME.app" \
+        --app-drop-link 450 180 \
+        --overwrite \
+        "$DMG_PATH" \
+        "$APP_BUNDLE" \
+        || {
+            echo "warning: create-dmg failed (this can happen in a headless/CI shell" >&2
+            echo "since it drives Finder to lay out the volume icon). Falling back to" >&2
+            echo "a plain hdiutil .dmg instead." >&2
+            rm -f "$DMG_PATH"
+        }
 fi
 
-create-dmg \
-    --volname "$APP_NAME" \
-    --window-pos 200 120 \
-    --window-size 600 380 \
-    --icon-size 100 \
-    --icon "$APP_NAME.app" 150 180 \
-    --hide-extension "$APP_NAME.app" \
-    --app-drop-link 450 180 \
-    --overwrite \
-    "$DMG_PATH" \
-    "$APP_BUNDLE" \
-    || {
-        echo "warning: create-dmg failed (this can happen in a headless/CI shell" >&2
-        echo "since it drives Finder to lay out the volume icon). Run this script" >&2
-        echo "from a normal Terminal on your Mac, or ship $APP_BUNDLE directly." >&2
-        exit 1
-    }
+if [ ! -f "$DMG_PATH" ]; then
+    # No create-dmg (or it failed): a plain .dmg via hdiutil alone — no
+    # custom icon layout/background, but fully functional (double-click,
+    # drag the .app onto the Applications alias) and needs nothing beyond
+    # what macOS ships. Good enough when `brew install create-dmg` isn't
+    # an option (no network, no Homebrew) or is overkill for a quick build.
+    echo "==> create-dmg not available — building a plain .dmg via hdiutil"
+    STAGING_DIR="$(mktemp -d)"
+    trap 'rm -rf "$STAGING_DIR"' EXIT
+    cp -R "$APP_BUNDLE" "$STAGING_DIR/"
+    ln -s /Applications "$STAGING_DIR/Applications"
+    hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_PATH"
+fi
 
 echo ""
 echo "==> Done"

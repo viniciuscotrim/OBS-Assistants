@@ -39,6 +39,9 @@ struct NowPlayingOverlayView: View {
 
                 Divider()
                 urlSection
+
+                Divider()
+                CreditsFooter()
             }
             .padding(20)
         }

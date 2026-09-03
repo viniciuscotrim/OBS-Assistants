@@ -29,6 +29,8 @@
 	<string>OBS Assistants conecta ao seu Bambu Lab na rede local via MQTT (porta 8883) para ler o status de impressão, e roda um pequeno servidor HTTP local para o overlay do OBS.</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>OBS Assistants precisa controlar o Music.app via Apple Events para ler a faixa em reprodução (título, artista, álbum, posição e capa do álbum) no overlay "Now Playing".</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Created by Vinicius Cotrim</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
