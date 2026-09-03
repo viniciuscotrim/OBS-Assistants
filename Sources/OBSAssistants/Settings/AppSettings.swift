@@ -68,6 +68,13 @@ final class AppSettings: ObservableObject {
     @Published var httpPort: Int {
         didSet { defaults.set(httpPort, forKey: Keys.httpPort) }
     }
+    /// Own port for the "Overlay Bambu Studio" source — independent
+    /// listener from the printer overlay's `httpPort` (see LocalHTTPServer's
+    /// doc comment), so each overlay's server starts/stops on its own from
+    /// the menu without affecting the other.
+    @Published var studioHttpPort: Int {
+        didSet { defaults.set(studioHttpPort, forKey: Keys.studioHttpPort) }
+    }
 
     @Published var overlayTheme: String {
         didSet { defaults.set(overlayTheme, forKey: Keys.overlayTheme) }
@@ -250,6 +257,7 @@ final class AppSettings: ObservableObject {
         static let clientCertPath = "clientCertPath"
         static let clientCertPasswordAccount = "clientCertPassword"
         static let httpPort = "httpPort"
+        static let studioHttpPort = "studioHttpPort"
         static let overlayTheme = "overlayTheme"
         static let studioOverlayTheme = "studioOverlayTheme"
         static let overlayTextScale = "overlayTextScale"
@@ -294,6 +302,7 @@ final class AppSettings: ObservableObject {
         clientCertPath = defaults.string(forKey: Keys.clientCertPath) ?? ""
         clientCertPassword = KeychainHelper.get(account: Self.keychainAccount(Keys.clientCertPasswordAccount)) ?? ""
         httpPort = defaults.object(forKey: Keys.httpPort) as? Int ?? 8090
+        studioHttpPort = defaults.object(forKey: Keys.studioHttpPort) as? Int ?? 8091
         overlayTheme = defaults.string(forKey: Keys.overlayTheme) ?? "dark"
         studioOverlayTheme = defaults.string(forKey: Keys.studioOverlayTheme) ?? "dark"
         overlayTextScale = defaults.object(forKey: Keys.overlayTextScale) as? Double ?? 1.0
@@ -424,12 +433,13 @@ final class AppSettings: ObservableObject {
         "http://127.0.0.1:\(httpPort)/overlay.html"
     }
 
-    /// Same overlay page, pointed at the separate "Overlay Bambu Studio"
-    /// data source (`?statusurl=`) instead of the printer's `/status` —
-    /// same server, same port, no second listener. Add this as its own
-    /// Browser Source in OBS if you want printer telemetry and slicing
-    /// details as two independently-positioned overlays.
+    /// Same overlay page, served by its own independent listener on
+    /// `studioHttpPort` — its `/status` route is the "Overlay Bambu Studio"
+    /// data source (slicing details), not the printer's. Add this as its
+    /// own Browser Source in OBS if you want printer telemetry and slicing
+    /// details as two independently-positioned overlays; start/stop it from
+    /// the menu independently of the printer overlay's server too.
     var studioObsURL: String {
-        "http://127.0.0.1:\(httpPort)/overlay.html?statusurl=/studio-status"
+        "http://127.0.0.1:\(studioHttpPort)/overlay.html"
     }
 }

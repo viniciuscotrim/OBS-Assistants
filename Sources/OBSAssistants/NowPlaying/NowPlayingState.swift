@@ -37,8 +37,19 @@ final class NowPlayingState: ObservableObject {
     @Published private(set) var nowPlaying: NowPlayingInfo = .idle
     @Published var lastError: String?
 
-    // MARK: Audio routing ("streaming only" toggle)
-    @Published private(set) var isStreamingOnlyEnabled = false
+    // MARK: Audio routing — two independent toggles (see AudioCaptureEngine's
+    // doc comment for why they're no longer one all-or-nothing switch).
+    /// Music.app's audio is being captured and broadcast to the overlay
+    /// (`/audio-stream`) for OBS — independent of `isLocalMuted` below, so
+    /// this alone lets you hear Music.app normally on your own speakers
+    /// *and* have the same audio reach the stream.
+    @Published private(set) var isBroadcasting = false
+    /// Music.app is also silenced on the Mac's own output. Only meaningful
+    /// while `isBroadcasting` is on — the UI disables this toggle otherwise,
+    /// and turning broadcasting off force-clears this too (see
+    /// `setBroadcasting`), since staying muted with nothing capturing the
+    /// audio would just lose the sound entirely.
+    @Published private(set) var isLocalMuted = false
     @Published private(set) var isAudioRoutingBusy = false
     /// Backing storage for the (macOS 14.2+-only) capture engine, boxed as
     /// `Any` so this property can exist on a class that itself must keep
@@ -67,8 +78,12 @@ final class NowPlayingState: ObservableObject {
             self?.updateNowPlayingIfNeeded(info)
         }
 
+        // The Music.app poller runs regardless (cheap, local, just keeps the
+        // menu's "now playing" status current) — but the HTTP server itself
+        // stays off until the user starts it from the menu, same as the
+        // other two overlays. See OBSAssistantsApp/AppState for the printer
+        // side of this — no overlay server auto-starts anymore.
         poller.start()
-        startServer()
     }
 
     /// The menu bar UI only ever displays title/artist/album/play-state — never
@@ -114,19 +129,18 @@ final class NowPlayingState: ObservableObject {
         return engine
     }
 
-    /// Turns "Music só no streaming" on or off.
+    /// Turns broadcasting Music.app's audio to the overlay (`/audio-stream`)
+    /// on or off — via ScreenCaptureKit's per-app audio capture (same class
+    /// of API OBS's own "Application Audio Capture" source uses).
+    /// Independent of `setLocalMuted`: on its own, this lets you hear
+    /// Music.app normally on your own speakers/headset *while the same
+    /// audio also reaches the stream* — enable `setLocalMuted` too for the
+    /// original "stream only, silent locally" behavior.
     ///
-    /// On: silences Music.app on the user's own speakers/headset (a Core
-    /// Audio process tap on Music.app, muted) while capturing its real audio
-    /// via ScreenCaptureKit's per-app audio capture (same class of API OBS's
-    /// own "Application Audio Capture" source uses) and broadcasting it over
-    /// `/audio-stream` for the overlay page to play. Everything else on the
-    /// Mac (a game, system sounds, any other app) is completely unaffected,
-    /// since nothing about output ROUTING is touched.
-    ///
-    /// Off: stops both. Music.app's audio reaches its normal output again
-    /// immediately.
-    func setStreamingOnly(_ enabled: Bool) {
+    /// Turning broadcasting off also force-clears local mute (if it was on)
+    /// — there's no point silencing Music.app locally once nothing is
+    /// capturing its audio anywhere.
+    func setBroadcasting(_ enabled: Bool) {
         guard !isAudioRoutingBusy else { return }
         guard #available(macOS 14.2, *) else {
             lastError = "Esse recurso requer macOS 14.2 ou mais recente."
@@ -140,27 +154,59 @@ final class NowPlayingState: ObservableObject {
             capture.onPCMChunk = { [weak server] data in
                 server?.broadcastAudio(data)
             }
-            capture.start { [weak self] result in
+            capture.startCapture { [weak self] result in
                 Task { @MainActor in
                     guard let self else { return }
                     self.isAudioRoutingBusy = false
                     switch result {
                     case .success:
-                        self.isStreamingOnlyEnabled = true
+                        self.isBroadcasting = true
                         self.lastError = nil
                     case .failure(let error):
-                        self.isStreamingOnlyEnabled = false
+                        self.isBroadcasting = false
                         self.lastError = error.description
                     }
                 }
             }
         } else {
             isAudioRoutingBusy = true
-            audioCapture.stop()
-            isStreamingOnlyEnabled = false
+            audioCapture.stopCapture()
+            isBroadcasting = false
+            if isLocalMuted {
+                audioCapture.stopMute()
+                isLocalMuted = false
+            }
             isAudioRoutingBusy = false
             lastError = nil
         }
+    }
+
+    /// Also silences Music.app on the Mac's own output (a Core Audio
+    /// process tap, muted — its *existence*, wrapped in a running aggregate,
+    /// is what actually silences the real output device; see
+    /// AudioCaptureEngine's doc comment). Only meaningful while
+    /// `isBroadcasting` is on; no-ops otherwise so the audio is never lost
+    /// entirely (muted locally with nothing capturing it for the stream).
+    func setLocalMuted(_ enabled: Bool) {
+        guard !isAudioRoutingBusy else { return }
+        guard #available(macOS 14.2, *) else { return }
+        guard isBroadcasting || !enabled else { return }
+
+        isAudioRoutingBusy = true
+        if enabled {
+            do {
+                try audioCapture.startMute()
+                isLocalMuted = true
+                lastError = nil
+            } catch {
+                isLocalMuted = false
+                lastError = (error as? AudioCaptureError)?.description ?? "Falha ao silenciar localmente."
+            }
+        } else {
+            audioCapture.stopMute()
+            isLocalMuted = false
+        }
+        isAudioRoutingBusy = false
     }
 
     func startServer() {

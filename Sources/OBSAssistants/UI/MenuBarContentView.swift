@@ -3,15 +3,16 @@ import SwiftUI
 import AppKit
 #endif
 
-/// The small menu-bar popover — printer connection, plus the compact
-/// "Now Playing" section. Everything heavier on the printer side
-/// (composites, AMS drying, HTTP server/appearance, field selection, and
-/// the separate Bambu Studio slicing-info overlay) lives in two full-size
-/// windows opened from here instead, since the single popover holding all
-/// of it had grown too large to navigate comfortably. See
-/// PrinterOverlayView / StudioOverlayView and their window controllers.
-/// "Now Playing" stays inline since it's just as compact as it was as its
-/// own standalone app's menu — see NowPlayingSectionView / NowPlayingState.
+/// The small menu-bar popover — stays simple on purpose: printer
+/// connection (MQTT) and the X.509 fallback, same as always, plus one
+/// "Servidores" section listing all three overlays (Impressora, Bambu
+/// Studio, Now Playing) as a status dot + Start/Stop + a settings (gear)
+/// button each. Every per-overlay setting (fields, AMS drying, theme/
+/// appearance, port, audio routing…) lives in that overlay's own full-size
+/// window, opened via its gear button — see PrinterOverlayView /
+/// StudioOverlayView / NowPlayingOverlayView and their window controllers.
+/// All three servers start stopped; the user starts only the one(s)
+/// they're actually using in OBS right now — see ServerRow.
 struct MenuBarContentView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var nowPlayingState: NowPlayingState
@@ -35,10 +36,7 @@ struct MenuBarContentView: View {
                 certFallbackSection
 
                 Divider()
-                overlayWindowButtons
-
-                Divider()
-                NowPlayingSectionView(nowPlaying: nowPlayingState)
+                serversSection
             }
             .padding(16)
 
@@ -251,36 +249,64 @@ struct MenuBarContentView: View {
         #endif
     }
 
-    // MARK: Overlay windows
+    // MARK: Servers — one row per overlay: status, Start/Stop, a settings
+    // (gear) button that opens that overlay's own window (fields, AMS
+    // drying, theme/appearance — see PrinterOverlayView / StudioOverlayView
+    // / NowPlayingOverlayView), and its OBS URL as click-to-copy text.
+    // All three start stopped — you start only the one(s) you're actually
+    // using in OBS right now.
 
-    private var overlayWindowButtons: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("Overlays")
-            Text("Campos, secagem do AMS, aparência e URLs do OBS ficam em janelas separadas agora — abra a que quiser configurar.")
+    private var serversSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionLabel("Servidores")
+            Text("Cada overlay tem seu próprio servidor local, parado até você iniciar. A engrenagem abre as configurações de cada um.")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button {
-                PrinterOverlayWindowController.shared.present(appState: appState)
-            } label: {
-                HStack {
-                    Image(systemName: "printer.fill")
-                    Text("Abrir Overlay Impressora")
-                    Spacer()
+            ServerRow(
+                title: "Impressora",
+                isRunning: appState.serverRunning,
+                obsURL: settings.obsURL,
+                onToggle: {
+                    appState.serverRunning ? appState.stopServer() : appState.startServer()
+                },
+                onOpenSettings: {
+                    PrinterOverlayWindowController.shared.present(appState: appState)
                 }
-            }
+            )
 
-            Button {
-                StudioOverlayWindowController.shared.present(appState: appState)
-            } label: {
-                HStack {
-                    Image(systemName: "square.3.layers.3d")
-                    Text("Abrir Overlay Bambu Studio")
-                    Spacer()
+            ServerRow(
+                title: "Bambu Studio",
+                isRunning: appState.studioServerRunning,
+                obsURL: settings.studioObsURL,
+                onToggle: {
+                    appState.studioServerRunning ? appState.stopStudioServer() : appState.startStudioServer()
+                },
+                onOpenSettings: {
+                    StudioOverlayWindowController.shared.present(appState: appState)
                 }
-            }
+            )
+
+            ServerRow(
+                title: nowPlayingRowTitle,
+                isRunning: nowPlayingState.isServerRunning,
+                obsURL: nowPlayingState.obsURL,
+                onToggle: {
+                    nowPlayingState.isServerRunning ? nowPlayingState.stopServer() : nowPlayingState.startServer()
+                },
+                onOpenSettings: {
+                    NowPlayingOverlayWindowController.shared.present(nowPlayingState: nowPlayingState)
+                }
+            )
         }
+    }
+
+    /// The music server's row shows the track currently playing instead of
+    /// a generic label, per request — falls back to "Now Playing" when
+    /// nothing's playing in Music.app.
+    private var nowPlayingRowTitle: String {
+        nowPlayingState.nowPlaying.trackId != "none" ? nowPlayingState.nowPlaying.title : "Now Playing"
     }
 
     // MARK: Footer

@@ -9,7 +9,13 @@ final class AppState: ObservableObject {
 
     @Published var connectionStatus: PrinterConnectionStatus = .disconnected
     @Published var fields: [FieldEntry] = []
+    /// Printer overlay's own HTTP server — independent of `studioServerRunning`
+    /// below (see LocalHTTPServer's doc comment). Both start stopped; the
+    /// user starts each from the menu.
     @Published var serverRunning = false
+    /// Bambu Studio overlay's own HTTP server — independent listener/port
+    /// from the printer's, so starting/stopping one never affects the other.
+    @Published var studioServerRunning = false
     @Published var lastUpdate: Date?
     @Published var discoveredPrinters: [DiscoveredPrinter] = []
     @Published var isScanningNetwork = false
@@ -36,6 +42,10 @@ final class AppState: ObservableObject {
 
     private let connectionManager = BambuConnectionManager()
     private let httpServer = LocalHTTPServer()
+    /// The Bambu Studio overlay's own listener — see LocalHTTPServer's doc
+    /// comment for why this is a fully separate instance/port from
+    /// `httpServer` now, instead of the two sharing one listener.
+    private let studioHttpServer = LocalHTTPServer()
     private let discoveryService = PrinterDiscoveryService()
     private let lanScanner = LanCertificateScanner()
     private var dryingController: DryingController!
@@ -117,7 +127,7 @@ final class AppState: ObservableObject {
             .sink { [weak self] _ in self?.recomputeStudioFields() }
             .store(in: &cancellables)
 
-        httpServer.studioStatusProvider = { [weak self] in
+        studioHttpServer.statusProvider = { [weak self] in
             self?.statusQueue.sync { self?.cachedStudioStatusJSON ?? Data("{}".utf8) } ?? Data("{}".utf8)
         }
         startStudioProjectRefreshTimer()
@@ -499,7 +509,11 @@ final class AppState: ObservableObject {
         rebuildStudioStatusJSON()
     }
 
-    // MARK: - HTTP server
+    // MARK: - HTTP servers
+    // Printer and Bambu Studio overlays each have their own independent
+    // listener/port (see LocalHTTPServer's doc comment) and are started
+    // stopped by default — the user starts whichever one(s) they want from
+    // the menu, same as the Now Playing overlay.
 
     func startServer() {
         do {
@@ -513,6 +527,20 @@ final class AppState: ObservableObject {
     func stopServer() {
         httpServer.stop()
         serverRunning = false
+    }
+
+    func startStudioServer() {
+        do {
+            try studioHttpServer.start(port: settings.studioHttpPort)
+            studioServerRunning = true
+        } catch {
+            studioServerRunning = false
+        }
+    }
+
+    func stopStudioServer() {
+        studioHttpServer.stop()
+        studioServerRunning = false
     }
 
     // MARK: - /status JSON

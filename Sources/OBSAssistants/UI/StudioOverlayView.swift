@@ -4,8 +4,9 @@ import AppKit
 #endif
 
 /// Content of the "Overlay Bambu Studio" window — a separate overlay
-/// source (own URL, own /studio-status endpoint, same HTTP server/port as
-/// the printer one) showing slicing details (layer height, walls, infill…)
+/// source (own URL, own independent HTTP server/port — see
+/// LocalHTTPServer's doc comment) showing slicing details (layer height,
+/// walls, infill…)
 /// read from a local `.3mf`, since the printer's own MQTT report never
 /// includes them — see BambuStudioProjectReader's doc comment for why.
 ///
@@ -40,11 +41,40 @@ struct StudioOverlayView: View {
                 fieldsSection
 
                 Divider()
+                serverSection
+
+                Divider()
                 appearanceSection
             }
             .padding(16)
         }
         .frame(width: 480, height: 680)
+    }
+
+    // MARK: HTTP server — own independent listener/port from the printer
+    // overlay's (see LocalHTTPServer's doc comment); starts stopped, same
+    // as the other two overlays.
+
+    private var serverSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            sectionLabel("Servidor HTTP local")
+
+            HStack {
+                Text("Porta")
+                    .font(.system(size: 11))
+                TextField("8091", value: $settings.studioHttpPort, formatter: NumberFormatter())
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 70)
+
+                Button(appState.studioServerRunning ? "Parar" : "Iniciar") {
+                    appState.studioServerRunning ? appState.stopStudioServer() : appState.startStudioServer()
+                }
+
+                Circle()
+                    .fill(appState.studioServerRunning ? Color.green : Color.gray)
+                    .frame(width: 7, height: 7)
+            }
+        }
     }
 
     // MARK: Project folder

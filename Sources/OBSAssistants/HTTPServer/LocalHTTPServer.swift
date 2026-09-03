@@ -7,6 +7,13 @@ import Network
 ///   GET /  or /overlay.html     -> the bundled overlay page
 ///   GET /overlay.css, /overlay.js -> its assets
 /// Meant to be pointed at by an OBS Browser Source on the same machine.
+///
+/// Generic and reusable on purpose: AppState owns two independent instances
+/// — one for the printer overlay, one for the "Overlay Bambu Studio"
+/// source — each on its own listener/port with its own `statusProvider`, so
+/// each can be started/stopped from the menu independently of the other
+/// (they used to share one listener/port; that meant stopping one silently
+/// stopped both, and both overlays were forced to start/stop together).
 final class LocalHTTPServer {
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "com.obsassistants.http")
@@ -14,10 +21,6 @@ final class LocalHTTPServer {
 
     /// Supplies the current /status JSON body on demand.
     var statusProvider: (() -> Data)?
-    /// Same shape as /status, but for the separate "Overlay Bambu Studio"
-    /// source (slicing details read from a local .3mf, not the printer's
-    /// MQTT report) — see AppState.rebuildStudioStatusJSON.
-    var studioStatusProvider: (() -> Data)?
 
     private(set) var isRunning = false
     private(set) var port: UInt16 = 0
@@ -119,9 +122,6 @@ final class LocalHTTPServer {
         switch path {
         case "/status":
             let body = statusProvider?() ?? Data("{}".utf8)
-            send(status: "200 OK", contentType: "application/json", body: body, on: connection, cors: true)
-        case "/studio-status":
-            let body = studioStatusProvider?() ?? Data("{}".utf8)
             send(status: "200 OK", contentType: "application/json", body: body, on: connection, cors: true)
         case "/", "/overlay.html", "/index.html":
             send(status: "200 OK", contentType: "text/html; charset=utf-8", body: Data(OverlayAssets.html.utf8), on: connection)

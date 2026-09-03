@@ -67,3 +67,35 @@ final class StudioOverlayWindowController {
         newWindow.orderFrontRegardless()
     }
 }
+
+/// Owns the "Overlay Now Playing" window — same pattern as the other two,
+/// just takes a `NowPlayingState` (its own independent ObservableObject)
+/// instead of the printer's `AppState`.
+@MainActor
+final class NowPlayingOverlayWindowController {
+    static let shared = NowPlayingOverlayWindowController()
+
+    private var window: NSWindow?
+
+    func present(nowPlayingState: NowPlayingState) {
+        if let window {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+            return
+        }
+
+        let content = NowPlayingOverlayView(nowPlaying: nowPlayingState)
+        let hosting = NSHostingController(rootView: content)
+        let newWindow = NSWindow(contentViewController: hosting)
+        newWindow.title = "Overlay Now Playing"
+        newWindow.styleMask = [.titled, .closable, .resizable, .miniaturizable]
+        newWindow.isReleasedWhenClosed = false
+        newWindow.center()
+        window = newWindow
+
+        NSApp.activate(ignoringOtherApps: true)
+        newWindow.makeKeyAndOrderFront(nil)
+        newWindow.orderFrontRegardless()
+    }
+}

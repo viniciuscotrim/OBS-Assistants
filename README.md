@@ -11,9 +11,11 @@ juntos no mesmo app:
   `.3mf` local.
 - **Now Playing (Music.app)** — lê a faixa em reprodução no Music.app e
   expõe um overlay web (capa do álbum, progresso, marquee) para o OBS,
-  incluindo a opção "Music só no streaming" (silencia o Music.app nos seus
-  alto-falantes e transmite o áudio real direto pelo overlay via WebSocket).
+  incluindo transmitir o áudio real do Music.app pelo overlay via WebSocket
+  (com a opção de também silenciá-lo no Mac, ou deixar tocando normalmente
+  enquanto transmite).
 
-Cada overlay é servido no seu próprio processo/porta local (impressora e
-Bambu Studio compartilham um servidor, Now Playing tem o seu próprio) —
-veja `Sources/OBSAssistants/HTTPServer` e `Sources/OBSAssistants/NowPlaying`.
+Cada um dos três overlays tem seu próprio servidor HTTP local independente
+(própria porta, próprio Start/Stop) — todos começam parados; você inicia só
+o(s) que for usar no OBS, no menu da barra ("Servidores"). Veja
+`Sources/OBSAssistants/HTTPServer` e `Sources/OBSAssistants/NowPlaying`.

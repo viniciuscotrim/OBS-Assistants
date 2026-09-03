@@ -29,9 +29,13 @@ enum AudioCaptureError: Error, CustomStringConvertible {
     }
 }
 
-/// Makes Music.app's audio play ONLY in the overlay (for OBS) instead of the
-/// user's own speakers/headset, by combining two independent mechanisms that
-/// each turned out to be good at exactly one half of the job:
+/// Streams Music.app's audio to the overlay (for OBS) via two independently
+/// controllable mechanisms — capture and local mute are two separate public
+/// entry points (`startCapture`/`stopCapture`, `startMute`/`stopMute`)
+/// precisely so the overlay can broadcast audio *while Music.app keeps
+/// playing normally on the user's own speakers* (capture on, mute off) —
+/// not just the original "silence locally, stream only" combination
+/// (capture on, mute on):
 ///
 ///  - **Muting locally**: a Core Audio process tap
 ///    (`AudioHardwareCreateProcessTap`, macOS 14.2+) on Music.app with
@@ -78,24 +82,51 @@ final class AudioCaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate {
         channels: AudioCaptureEngine.outputChannelCount,
         interleaved: true
     )!
-    private(set) var isRunning = false
+    /// Whether ScreenCaptureKit is actively capturing + broadcasting
+    /// Music.app's audio — independent of `isMuted` below. Capturing this
+    /// way never depended on Music.app being muted (ScreenCaptureKit's
+    /// per-app capture reads the render graph regardless of output
+    /// routing), which is what makes the two independently controllable at
+    /// all — see the class doc comment.
+    private(set) var isCapturing = false
+    /// Whether Music.app is currently silenced on its normal output (the
+    /// Core Audio mute tap below) — independent of `isCapturing`. Kept
+    /// separate so "listen locally AND send to the stream" (capture on,
+    /// mute off) and "stream only, silent locally" (capture on, mute on)
+    /// are both just a combination of two independent toggles instead of
+    /// one all-or-nothing switch.
+    private(set) var isMuted = false
 
     /// Called with raw 16-bit little-endian interleaved PCM (stereo, 48kHz)
     /// as it's captured. Invoked on the stream's sample-handler queue.
     var onPCMChunk: ((Data) -> Void)?
 
-    func start(completion: @escaping (Result<Void, AudioCaptureError>) -> Void) {
-        stop()
+    // MARK: - Capture (ScreenCaptureKit -> onPCMChunk), independent of mute
+
+    func startCapture(completion: @escaping (Result<Void, AudioCaptureError>) -> Void) {
+        stopCapture()
+        startCaptureStream(completion: completion)
+    }
+
+    func stopCapture() {
+        stream?.stopCapture { _ in }
+        stream = nil
+        converter = nil
+        isCapturing = false
+    }
+
+    // MARK: - Local mute (Core Audio process tap), independent of capture
+
+    func startMute() throws {
+        stopMute()
 
         guard let musicPID = NSRunningApplication
             .runningApplications(withBundleIdentifier: "com.apple.Music")
             .first?.processIdentifier else {
-            completion(.failure(.musicNotRunning))
-            return
+            throw AudioCaptureError.musicNotRunning
         }
         guard let processObjectID = Self.findProcessObject(forPID: musicPID) else {
-            completion(.failure(.processObjectNotFound))
-            return
+            throw AudioCaptureError.processObjectNotFound
         }
 
         let tapDescription = CATapDescription(stereoMixdownOfProcesses: [processObjectID])
@@ -106,8 +137,7 @@ final class AudioCaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate {
         var newTapID: AudioObjectID = 0
         let tapStatus = AudioHardwareCreateProcessTap(tapDescription, &newTapID)
         guard tapStatus == noErr, newTapID != 0 else {
-            completion(.failure(.muteTapFailed(tapStatus)))
-            return
+            throw AudioCaptureError.muteTapFailed(tapStatus)
         }
         muteTapID = newTapID
 
@@ -115,28 +145,21 @@ final class AudioCaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate {
             try startMuteKeepAliveReader(tapUID: tapDescription.uuid.uuidString)
         } catch {
             destroyMuteTap()
-            completion(.failure(error as? AudioCaptureError ?? .muteTapFailed(-1)))
-            return
+            throw error
         }
-
-        startCaptureStream { [weak self] result in
-            guard let self else { return }
-            if case .failure = result {
-                // Local silence is the least-surprising failure mode if the
-                // capture side fails to start — don't leave Music.app muted
-                // with no audio going anywhere.
-                self.destroyMuteTap()
-            }
-            completion(result)
-        }
+        isMuted = true
     }
 
-    func stop() {
-        stream?.stopCapture { _ in }
-        stream = nil
-        converter = nil
+    func stopMute() {
         destroyMuteTap()
-        isRunning = false
+        isMuted = false
+    }
+
+    /// Tears down both, regardless of which are currently active — full
+    /// cleanup on app/feature teardown.
+    func stop() {
+        stopCapture()
+        stopMute()
     }
 
     private func destroyMuteTap() {
@@ -307,7 +330,7 @@ final class AudioCaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate {
                     return
                 }
                 self?.stream = newStream
-                self?.isRunning = true
+                self?.isCapturing = true
                 completion(.success(()))
             }
         }
@@ -324,7 +347,7 @@ final class AudioCaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate {
     // MARK: - SCStreamDelegate
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        isRunning = false
+        isCapturing = false
         self.stream = nil
     }
 

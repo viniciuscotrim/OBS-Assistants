@@ -42,11 +42,13 @@ struct OBSAssistantsApp: App {
 
         let state = AppState()
         _appState = StateObject(wrappedValue: state)
-        // The HTTP server (and, if already configured, the MQTT connection)
-        // come up automatically at launch so OBS's Browser Source works
-        // right away — Start/Stop in the menu remains a manual override.
+        // None of the three overlay HTTP servers (printer, Bambu Studio, Now
+        // Playing) auto-start anymore — they come up stopped, and the user
+        // starts whichever one(s) they actually want from the menu's
+        // "Servidores" section. The MQTT connection to the printer is a
+        // separate concern and keeps auto-connecting below when already
+        // configured.
         Task { @MainActor in
-            state.startServer()
             // Diagnostic-only, real hardware: `OA_DRY_TEST=<amsID>:<filamentType>:<tempC>:<hours>`
             // connects normally (real printer, real Access Code) and, once
             // connected, sends exactly one real ams_filament_drying command
