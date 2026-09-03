@@ -1,9 +1,9 @@
 #!/bin/bash
-# build_dmg.sh — builds BambuStreamOverlay in release mode, assembles it
+# build_dmg.sh — builds OBS Assistants in release mode, assembles it
 # into a proper .app bundle, signs it, and packages a reinstallable .dmg
 # into ./dist. Re-run any time; every step overwrites its own output.
 #
-# Signing: uses the local "BambuStreamOverlay Local Dev" self-signed
+# Signing: uses the local "OBS Assistants Local Dev" self-signed
 # code-signing identity if present in the login keychain, falling back to
 # ad-hoc (--sign -) if it isn't. This matters in practice: ad-hoc signing
 # gets a *different* signature on every single build, which macOS treats
@@ -11,26 +11,26 @@
 # Keychain items, like the printer's saved Access Code) stops resolving
 # and you have to re-enter it after every rebuild. A stable local identity
 # fixes that for good. One-time setup, if the identity doesn't exist yet:
-#   openssl genrsa -out /tmp/bso.key 2048
-#   openssl req -new -x509 -key /tmp/bso.key -out /tmp/bso.crt -days 3650 \
-#     -subj "/CN=BambuStreamOverlay Local Dev" \
+#   openssl genrsa -out /tmp/oa.key 2048
+#   openssl req -new -x509 -key /tmp/oa.key -out /tmp/oa.crt -days 3650 \
+#     -subj "/CN=OBS Assistants Local Dev" \
 #     -addext "basicConstraints=critical,CA:false" \
 #     -addext "keyUsage=critical,digitalSignature" \
 #     -addext "extendedKeyUsage=critical,codeSigning"
-#   openssl pkcs12 -export -out /tmp/bso.p12 -inkey /tmp/bso.key -in /tmp/bso.crt \
+#   openssl pkcs12 -export -out /tmp/oa.p12 -inkey /tmp/oa.key -in /tmp/oa.crt \
 #     -passout pass:temp -legacy   # -legacy: macOS's Security framework can't
 #                                  # read the modern PKCS12 cipher OpenSSL 3 defaults to
-#   security import /tmp/bso.p12 -k ~/Library/Keychains/login.keychain-db \
+#   security import /tmp/oa.p12 -k ~/Library/Keychains/login.keychain-db \
 #     -P temp -T /usr/bin/codesign -A
 #   security add-trusted-cert -r trustRoot -p codeSign \
-#     -k ~/Library/Keychains/login.keychain-db /tmp/bso.crt
-#   rm /tmp/bso.key /tmp/bso.crt /tmp/bso.p12
+#     -k ~/Library/Keychains/login.keychain-db /tmp/oa.crt
+#   rm /tmp/oa.key /tmp/oa.crt /tmp/oa.p12
 #
 # Requirements: Swift toolchain (Xcode or Xcode Command Line Tools),
 # create-dmg (`brew install create-dmg`).
 set -euo pipefail
 
-SIGNING_IDENTITY="BambuStreamOverlay Local Dev"
+SIGNING_IDENTITY="OBS Assistants Local Dev"
 if ! security find-identity -v -p codesigning 2>/dev/null | grep -q "$SIGNING_IDENTITY"; then
     SIGNING_IDENTITY="-" # ad-hoc fallback
 fi
@@ -38,9 +38,10 @@ fi
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
-APP_NAME="BambuStreamOverlay"
-BUNDLE_ID="com.bambustreamoverlay.app"
-INFO_PLIST_SRC="Sources/BambuStreamOverlay/App/Info.plist"
+APP_NAME="OBS Assistants"
+BIN_NAME="OBSAssistants" # Package.swift executable target name (no spaces)
+BUNDLE_ID="com.obsassistants.app"
+INFO_PLIST_SRC="Sources/OBSAssistants/App/Info.plist"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 
@@ -51,21 +52,21 @@ echo "==> Building $APP_NAME v$VERSION (release)"
 
 # Prefer a universal (arm64 + x86_64) binary; fall back to the host's native
 # architecture if the second slice's SDK isn't available in this toolchain.
-if swift build -c release --arch arm64 --arch x86_64 2>/tmp/bso_build_universal.log; then
+if swift build -c release --arch arm64 --arch x86_64 2>/tmp/oa_build_universal.log; then
     BUILD_DIR=".build/apple/Products/Release"
-    if [ ! -f "$BUILD_DIR/$APP_NAME" ]; then
+    if [ ! -f "$BUILD_DIR/$BIN_NAME" ]; then
         # Older SwiftPM layouts place the universal binary here instead.
         BUILD_DIR=".build/release"
     fi
     echo "    universal build ok"
 else
     echo "    universal build not available here, falling back to native arch:"
-    tail -n 20 /tmp/bso_build_universal.log || true
+    tail -n 20 /tmp/oa_build_universal.log || true
     swift build -c release
     BUILD_DIR=".build/release"
 fi
 
-BIN_PATH="$BUILD_DIR/$APP_NAME"
+BIN_PATH="$BUILD_DIR/$BIN_NAME"
 if [ ! -f "$BIN_PATH" ]; then
     echo "error: built binary not found at $BIN_PATH" >&2
     exit 1
@@ -76,7 +77,7 @@ rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 
-cp "$BIN_PATH" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+cp "$BIN_PATH" "$APP_BUNDLE/Contents/MacOS/$BIN_NAME"
 cp "$INFO_PLIST_SRC" "$APP_BUNDLE/Contents/Info.plist"
 
 echo "==> Signing (identity: $SIGNING_IDENTITY)"

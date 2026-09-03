@@ -47,7 +47,7 @@ struct MenuBarContentView: View {
     private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text("BambuStreamOverlay")
+                Text("OBS Assistants")
                     .font(.system(size: 14, weight: .semibold))
                 HStack(spacing: 5) {
                     Circle()

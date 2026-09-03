@@ -12,7 +12,7 @@ import Combine
 final class AppSettings: ObservableObject {
     static let shared = AppSettings()
 
-    /// Real users never set BSO_TEST_PAYLOAD/BSO_SCAN_TEST/BSO_ISOLATED_DEFAULTS
+    /// Real users never set OA_TEST_PAYLOAD/OA_SCAN_TEST/OA_ISOLATED_DEFAULTS
     /// — those only exist for developer testing (see README "Testing
     /// without hardware"). When any of them is set, settings (and the two
     /// Keychain secrets) persist under a throwaway namespace instead of the
@@ -20,14 +20,14 @@ final class AppSettings: ObservableObject {
     /// configured fields/order/theme/access code/etc.
     private static let isTestRun: Bool = {
         let env = ProcessInfo.processInfo.environment
-        return env["BSO_TEST_PAYLOAD"] != nil
-            || env["BSO_SCAN_TEST"] != nil
-            || env["BSO_ISOLATED_DEFAULTS"] != nil
-            || env["BSO_KEYCHAIN_TEST"] != nil
+        return env["OA_TEST_PAYLOAD"] != nil
+            || env["OA_SCAN_TEST"] != nil
+            || env["OA_ISOLATED_DEFAULTS"] != nil
+            || env["OA_KEYCHAIN_TEST"] != nil
     }()
 
     private let defaults: UserDefaults = {
-        if isTestRun, let suite = UserDefaults(suiteName: "com.bambustreamoverlay.app.testing") {
+        if isTestRun, let suite = UserDefaults(suiteName: "com.obsassistants.app.testing") {
             return suite
         }
         return .standard
@@ -281,12 +281,12 @@ final class AppSettings: ObservableObject {
         printerSerial = defaults.string(forKey: Keys.printerSerial) ?? ""
         // Diagnostic-only escape hatch: the Keychain read below has been
         // intermittently hanging/timing out on relaunch during testing
-        // (see KeychainHelper's 3s timeout) — BSO_ACCESS_CODE_OVERRIDE lets
+        // (see KeychainHelper's 3s timeout) — OA_ACCESS_CODE_OVERRIDE lets
         // a manual test run skip that read entirely and use a value
         // supplied directly, so a flaky securityd doesn't block testing an
         // otherwise-unrelated MQTT payload change. Never used for the
         // user's normal/production launch path.
-        if let override = ProcessInfo.processInfo.environment["BSO_ACCESS_CODE_OVERRIDE"] {
+        if let override = ProcessInfo.processInfo.environment["OA_ACCESS_CODE_OVERRIDE"] {
             accessCode = override
         } else {
             accessCode = KeychainHelper.get(account: Self.keychainAccount(Keys.accessCodeAccount)) ?? ""

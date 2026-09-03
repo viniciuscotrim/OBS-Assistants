@@ -9,7 +9,7 @@ import Network
 /// Meant to be pointed at by an OBS Browser Source on the same machine.
 final class LocalHTTPServer {
     private var listener: NWListener?
-    private let queue = DispatchQueue(label: "com.bambustreamoverlay.http")
+    private let queue = DispatchQueue(label: "com.obsassistants.http")
     private var connections: [ObjectIdentifier: NWConnection] = [:]
 
     /// Supplies the current /status JSON body on demand.

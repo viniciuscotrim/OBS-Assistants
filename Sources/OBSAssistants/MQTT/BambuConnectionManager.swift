@@ -56,7 +56,7 @@ final class BambuConnectionManager {
     /// Handy/Studio app publishes there when the user triggers a feature
     /// through it — e.g. capturing the real `ams_filament_drying` payload
     /// instead of guessing field names. Never publishes anything itself.
-    /// Driven by BSO_SNIFF_REQUESTS=1 (see BambuStreamOverlayApp).
+    /// Driven by OA_SNIFF_REQUESTS=1 (see OBSAssistantsApp).
     var sniffRequestsTopic = false
 
     private var settings: AppSettings { AppSettings.shared }
@@ -78,7 +78,7 @@ final class BambuConnectionManager {
     private static var dryingSequenceID = 25000
     private var usingFallback = false
     private var reconnectTimer: DispatchSourceTimer?
-    private let reconnectQueue = DispatchQueue(label: "com.bambustreamoverlay.reconnect")
+    private let reconnectQueue = DispatchQueue(label: "com.obsassistants.reconnect")
 
     init() {
         client.onStateChange = { [weak self] state in
@@ -112,7 +112,7 @@ final class BambuConnectionManager {
     private func connectPrimary() {
         client.connect(
             host: settings.printerIP,
-            clientID: "BambuStreamOverlay-\(UUID().uuidString.prefix(8))",
+            clientID: "OBSAssistants-\(UUID().uuidString.prefix(8))",
             username: "bblp",
             password: settings.accessCode,
             clientIdentity: nil
@@ -132,7 +132,7 @@ final class BambuConnectionManager {
         status = .connecting
         client.connect(
             host: settings.printerIP,
-            clientID: "BambuStreamOverlay-\(UUID().uuidString.prefix(8))",
+            clientID: "OBSAssistants-\(UUID().uuidString.prefix(8))",
             username: "bblp",
             password: settings.accessCode,
             clientIdentity: identity
@@ -305,7 +305,7 @@ final class BambuConnectionManager {
     /// Test-only entry point: feeds a captured/sample MQTT report payload
     /// through the exact same merge+flatten pipeline as a live message,
     /// without needing a physical printer. Used by the app at launch when
-    /// the BSO_TEST_PAYLOAD environment variable points at a JSON file (see
+    /// the OA_TEST_PAYLOAD environment variable points at a JSON file (see
     /// README "Testing without hardware").
     func injectTestPayload(_ json: [String: Any]) {
         reportStore.merge(json)

@@ -4,7 +4,7 @@ import Foundation
 /// constants instead of shipped as a separate SwiftPM resource bundle.
 ///
 /// Why: `swift build`'s generated `Bundle.module` accessor looks for
-/// `BambuStreamOverlay_BambuStreamOverlay.bundle` at the *root* of
+/// `OBSAssistants_OBSAssistants.bundle` at the *root* of
 /// `Bundle.main.bundleURL` (i.e. next to `Contents/`, not inside
 /// `Contents/Resources`) when running from an app bundle — an easy thing to
 /// get subtly wrong when hand-assembling the .app in build_dmg.sh for
@@ -21,7 +21,7 @@ enum OverlayAssets {
     <html lang="pt-BR">
     <head>
     <meta charset="UTF-8">
-    <title>BambuStreamOverlay</title>
+    <title>OBS Assistants</title>
     <link rel="stylesheet" href="overlay.css">
     </head>
     <body>
@@ -35,7 +35,7 @@ enum OverlayAssets {
     """#
 
     static let css = #"""
-    /* BambuStreamOverlay — overlay page for OBS Browser Source.
+    /* OBS Assistants — overlay page for OBS Browser Source.
        Themes are toggled via a class on #overlay, set by overlay.js from the
        ?theme= query param: dark (default), twitch, transparent. */
 
@@ -208,7 +208,7 @@ enum OverlayAssets {
     """#
 
     static let js = #"""
-    // BambuStreamOverlay overlay — polls the local /status endpoint served by
+    // OBS Assistants overlay — polls the local /status endpoint served by
     // the macOS app and renders only the fields marked "visible" in the app's
     // menu-bar UI, in the order chosen there. Query params:
     //   ?theme=dark|twitch|transparent   (default: dark)

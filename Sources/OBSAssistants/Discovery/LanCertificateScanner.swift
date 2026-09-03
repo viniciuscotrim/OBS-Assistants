@@ -32,7 +32,7 @@ final class LanCertificateScanner {
     // ever blocks synchronously, so it's safe for all outstanding probes to
     // share it (no thread-pool exhaustion risk the way a blocking
     // DispatchSemaphore.wait() on a concurrent queue would have).
-    private let callbackQueue = DispatchQueue(label: "com.bambustreamoverlay.lanscan")
+    private let callbackQueue = DispatchQueue(label: "com.obsassistants.lanscan")
     private let maxConcurrent = 48
     private let perHostTimeout: TimeInterval = 1.5
 

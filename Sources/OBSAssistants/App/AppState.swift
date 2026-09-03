@@ -40,7 +40,7 @@ final class AppState: ObservableObject {
     private let lanScanner = LanCertificateScanner()
     private var dryingController: DryingController!
     private var rawSnapshot: [String: Any] = [:]
-    private let statusQueue = DispatchQueue(label: "com.bambustreamoverlay.status-json")
+    private let statusQueue = DispatchQueue(label: "com.obsassistants.status-json")
     private var cachedStatusJSON = Data("{}".utf8)
     private var cachedStudioStatusJSON = Data("{}".utf8)
     private var cancellables = Set<AnyCancellable>()
@@ -138,7 +138,7 @@ final class AppState: ObservableObject {
         discoveryService.onUpdate = { [weak self] printers in
             Task { @MainActor in
                 self?.discoveredPrinters = printers
-                print("[BambuStreamOverlay] discovered \(printers.count) printer(s): \(printers.map { "\($0.name)@\($0.ip)" })")
+                print("[OBS Assistants] discovered \(printers.count) printer(s): \(printers.map { "\($0.name)@\($0.ip)" })")
             }
         }
         discoveryService.start()
@@ -220,7 +220,7 @@ final class AppState: ObservableObject {
         isScanningNetwork = true
         lanScanner.scan { [weak self] scanned in
             Task { @MainActor in
-                print("[BambuStreamOverlay] active LAN scan found \(scanned.count): \(scanned.map { "\($0.serial)@\($0.ip)" })")
+                print("[OBS Assistants] active LAN scan found \(scanned.count): \(scanned.map { "\($0.serial)@\($0.ip)" })")
                 self?.mergeScanned(scanned)
                 self?.isScanningNetwork = false
             }
@@ -456,7 +456,7 @@ final class AppState: ObservableObject {
         connectionManager.stopAMSDrying(amsID: amsID)
     }
 
-    /// Diagnostic-only — see BSO_DRY_TEST in BambuStreamOverlayApp.init().
+    /// Diagnostic-only — see OA_DRY_TEST in OBSAssistantsApp.init().
     func sendDryingCommandForTest(amsID: Int, filamentType: String, tempC: Double, durationHours: Double) {
         let coolingTempC = settings.profile(forFilamentType: filamentType)?.coolingTemperatureC ?? max(0, tempC - 5)
         connectionManager.sendAMSDryingCommand(amsID: amsID, filamentType: filamentType, tempC: tempC, coolingTempC: coolingTempC, durationHours: durationHours, rotateTray: settings.rotateTrayDefaultEnabled, mode: 1)

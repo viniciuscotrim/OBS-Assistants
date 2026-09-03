@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "BambuStreamOverlay",
+    name: "OBSAssistants",
     platforms: [
         .macOS(.v13)
     ],
     targets: [
         .executableTarget(
-            name: "BambuStreamOverlay",
-            path: "Sources/BambuStreamOverlay",
+            name: "OBSAssistants",
+            path: "Sources/OBSAssistants",
             exclude: [
                 "App/Info.plist"
             ],
@@ -22,7 +22,7 @@ let package = Package(
                     "-Xlinker", "-sectcreate",
                     "-Xlinker", "__TEXT",
                     "-Xlinker", "__info_plist",
-                    "-Xlinker", "Sources/BambuStreamOverlay/App/Info.plist"
+                    "-Xlinker", "Sources/OBSAssistants/App/Info.plist"
                 ])
             ]
         )

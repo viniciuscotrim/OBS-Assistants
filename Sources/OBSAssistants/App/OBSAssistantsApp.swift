@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct BambuStreamOverlayApp: App {
+struct OBSAssistantsApp: App {
     @StateObject private var appState: AppState
 
     init() {
@@ -10,7 +10,7 @@ struct BambuStreamOverlayApp: App {
         // in a block buffer until the process exits.
         setvbuf(stdout, nil, _IONBF, 0)
 
-        if ProcessInfo.processInfo.environment["BSO_SCAN_TEST"] != nil {
+        if ProcessInfo.processInfo.environment["OA_SCAN_TEST"] != nil {
             print("[ScanTest] scanning local subnet for port 8883...")
             LanCertificateScanner().scan { found in
                 print("[ScanTest] found \(found.count): \(found.map { "\($0.serial)@\($0.ip)" })")
@@ -20,11 +20,11 @@ struct BambuStreamOverlayApp: App {
 
         // Diagnostic-only: exercises the exact same Keychain save+read path
         // the UI uses for the Access Code, without needing to click through
-        // the popover. `BSO_KEYCHAIN_TEST=write:<value>` saves it (isolated
-        // to the .testing account, same as BSO_TEST_PAYLOAD does for
-        // UserDefaults); `BSO_KEYCHAIN_TEST=read` reads it back and prints
+        // the popover. `OA_KEYCHAIN_TEST=write:<value>` saves it (isolated
+        // to the .testing account, same as OA_TEST_PAYLOAD does for
+        // UserDefaults); `OA_KEYCHAIN_TEST=read` reads it back and prints
         // what it got. See README "Testing without hardware".
-        if let mode = ProcessInfo.processInfo.environment["BSO_KEYCHAIN_TEST"] {
+        if let mode = ProcessInfo.processInfo.environment["OA_KEYCHAIN_TEST"] {
             let settings = AppSettings.shared
             if mode.hasPrefix("write:") {
                 let value = String(mode.dropFirst("write:".count))
@@ -43,13 +43,13 @@ struct BambuStreamOverlayApp: App {
         // right away — Start/Stop in the menu remains a manual override.
         Task { @MainActor in
             state.startServer()
-            // Diagnostic-only, real hardware: `BSO_DRY_TEST=<amsID>:<filamentType>:<tempC>:<hours>`
+            // Diagnostic-only, real hardware: `OA_DRY_TEST=<amsID>:<filamentType>:<tempC>:<hours>`
             // connects normally (real printer, real Access Code) and, once
             // connected, sends exactly one real ams_filament_drying command
             // with the given values — used to test the corrected
             // dry_filament/dry_temperature/dry_duration field names against
             // real hardware without going through the notification/UI flow.
-            if ProcessInfo.processInfo.environment["BSO_SNIFF_REQUESTS"] == "1" {
+            if ProcessInfo.processInfo.environment["OA_SNIFF_REQUESTS"] == "1" {
                 // Passive-only: subscribes to device/<serial>/request in
                 // addition to /report and just logs whatever any MQTT
                 // client (including the official Bambu Handy/Studio app,
@@ -58,10 +58,10 @@ struct BambuStreamOverlayApp: App {
                 // drying notes for why — no public documentation exists
                 // for ams_filament_drying, so this captures ground truth
                 // instead of guessing field names further.
-                print("[Sniff] BSO_SNIFF_REQUESTS=1 — will passively log any MQTT publish on device/<serial>/request, no commands will be sent")
+                print("[Sniff] OA_SNIFF_REQUESTS=1 — will passively log any MQTT publish on device/<serial>/request, no commands will be sent")
                 state.enableRequestTopicSniff()
                 state.connectPrinter()
-            } else if let spec = ProcessInfo.processInfo.environment["BSO_DRY_TEST"] {
+            } else if let spec = ProcessInfo.processInfo.environment["OA_DRY_TEST"] {
                 let parts = spec.split(separator: ":").map(String.init)
                 if parts.count == 4, let amsID = Int(parts[0]), let tempC = Double(parts[2]), let hours = Double(parts[3]) {
                     state.connectPrinter()
@@ -73,7 +73,7 @@ struct BambuStreamOverlayApp: App {
                         }
                     }
                 }
-            } else if let amsIDString = ProcessInfo.processInfo.environment["BSO_DRY_STOP_TEST"], let amsID = Int(amsIDString) {
+            } else if let amsIDString = ProcessInfo.processInfo.environment["OA_DRY_STOP_TEST"], let amsID = Int(amsIDString) {
                 // Diagnostic-only, real hardware: connects and sends exactly
                 // one real stop (mode 0) command to the given AMS unit —
                 // used to test the stop path against a cycle that's
@@ -86,7 +86,7 @@ struct BambuStreamOverlayApp: App {
                         state.stopDrying(amsID: amsID)
                     }
                 }
-            } else if let testPayloadPath = ProcessInfo.processInfo.environment["BSO_TEST_PAYLOAD"] {
+            } else if let testPayloadPath = ProcessInfo.processInfo.environment["OA_TEST_PAYLOAD"] {
                 // Dry-run mode: replay a captured report instead of connecting
                 // to a real printer. See README "Testing without hardware".
                 // Comma-separate multiple file paths to replay them in

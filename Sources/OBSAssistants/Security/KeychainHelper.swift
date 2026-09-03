@@ -20,9 +20,9 @@ import Security
 /// worst case, a read times out and comes back empty (you re-enter that
 /// one value), rather than the whole app never launching.
 enum KeychainHelper {
-    private static let service = "com.bambustreamoverlay.app"
+    private static let service = "com.obsassistants.app"
     private static let timeout: TimeInterval = 3
-    private static let queue = DispatchQueue(label: "com.bambustreamoverlay.keychain", qos: .userInitiated)
+    private static let queue = DispatchQueue(label: "com.obsassistants.keychain", qos: .userInitiated)
 
     /// Runs `body` on a background queue and waits up to `timeout` for it.
     /// On timeout, returns `nil` immediately and abandons the still-running

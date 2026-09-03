@@ -19,7 +19,7 @@ enum MQTTClientState: Equatable {
 /// BambuConnectionManager's post-Jan/2025-firmware fallback.
 final class MQTTClient {
     private var connection: NWConnection?
-    private let queue = DispatchQueue(label: "com.bambustreamoverlay.mqtt")
+    private let queue = DispatchQueue(label: "com.obsassistants.mqtt")
     private var reader = MQTTPacketReader()
     private var pingTimer: DispatchSourceTimer?
     private var nextPacketID: UInt16 = 1

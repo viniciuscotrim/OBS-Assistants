@@ -42,7 +42,7 @@ final class PrinterDiscoveryService {
     private static let staleAfter: TimeInterval = 30
     private static let pruneInterval: TimeInterval = 15
 
-    private let queue = DispatchQueue(label: "com.bambustreamoverlay.discovery")
+    private let queue = DispatchQueue(label: "com.obsassistants.discovery")
     private var sources: [DispatchSourceRead] = []
     private var pruneTimer: DispatchSourceTimer?
     private var printers: [String: DiscoveredPrinter] = [:]
