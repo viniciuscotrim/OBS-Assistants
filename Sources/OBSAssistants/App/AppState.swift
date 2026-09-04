@@ -174,28 +174,12 @@ final class AppState: ObservableObject {
         // server or MQTT connection from coming up; the menu-bar app and
         // OBS overlay work regardless of whether/when notifications
         // finish setting up.
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            DryingNotificationManager.shared.onStartDryingAction = { amsID, trayIndex, filamentType, humidityPercent in
-                Task { @MainActor in
-                    guard let self else { return }
-                    // Rebuild the alert from the notification's own payload
-                    // — the in-memory DryingAlert that triggered it may be
-                    // long gone by the time you actually tap the action. A
-                    // "/" in the type string means it was a mixed-type alert.
-                    let kind: DryingAlertKind
-                    if filamentType.contains("/") {
-                        let types = filamentType.split(separator: "/").map(String.init)
-                        let safeTemp = types.compactMap { self.settings.profile(forFilamentType: $0)?.dryTemperatureC }.min() ?? 45
-                        kind = .mixedFilamentTypes(types: types, safeTempC: safeTemp)
-                    } else if let profile = self.settings.profile(forFilamentType: filamentType) {
-                        kind = .thresholdExceeded(profile: profile)
-                    } else {
-                        kind = .unknownFilamentType
-                    }
-                    let alert = DryingAlert(amsID: amsID, trayIndex: trayIndex, filamentType: filamentType, humidityPercent: humidityPercent, kind: kind)
-                    self.presentDryConfirmation(alert)
-                }
-            }
+        DispatchQueue.global(qos: .utility).async {
+            // The notification's action button no longer opens our own
+            // confirmation window — it opens the official Bambu app instead
+            // (see DryingNotificationManager.openBambuApp). Local MQTT drying
+            // commands don't take effect on newer firmware/models (X2D
+            // confirmed) — see github.com/viniciuscotrim/OBS-Assistants/issues/2.
             DryingNotificationManager.shared.requestAuthorizationIfNeeded()
         }
 

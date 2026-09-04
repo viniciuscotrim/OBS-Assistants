@@ -1,34 +1,51 @@
 import Foundation
 import UserNotifications
+#if canImport(AppKit)
+import AppKit
+#endif
 
 /// Native macOS notifications for AMS humidity alerts, including the
-/// "Iniciar secagem agora" action button. Notification identifiers/userInfo
-/// carry enough of the DryingAlert to reconstruct it when the action is
-/// tapped (UNUserNotificationCenter delivers that asynchronously, possibly
-/// after this process's in-memory alert object is long gone).
+/// "Abrir app da Bambu" action button.
+///
+/// This used to be "Iniciar secagem agora", opening this app's own
+/// confirmation window and sending `ams_filament_drying` over local MQTT.
+/// As of newer firmware (confirmed on an X2D — see
+/// github.com/viniciuscotrim/OBS-Assistants/issues/2), the printer requires
+/// that command to carry a cryptographic signature only Bambu Lab's own
+/// software (Bambu Connect, tied to a cloud account) can produce — sent
+/// without it, the printer accepts the MQTT publish with no error but
+/// never actually starts drying. Bambu Lab's own documentation confirms
+/// AMS control is deliberately gated behind their secure channel now, and
+/// replicating that signature would mean routing around a security
+/// control they built on purpose — not something this app does, even
+/// with the user's own legitimate account. So instead of pretending to
+/// act, the notification now sends you straight to the real thing: the
+/// official Bambu app, where the command actually works.
 final class DryingNotificationManager: NSObject, UNUserNotificationCenterDelegate {
     static let shared = DryingNotificationManager()
 
     private static let categoryID = "AMS_HUMIDITY_ALERT"
-    private static let startDryingActionID = "START_DRYING_ACTION"
-
-    /// Fired when the user taps "Iniciar secagem agora" on a notification.
-    /// Always delivered on the main thread.
-    var onStartDryingAction: ((_ amsID: Int, _ trayIndex: Int, _ filamentType: String, _ humidityPercent: Double) -> Void)?
+    private static let openBambuAppActionID = "OPEN_BAMBU_APP_ACTION"
+    /// Bambu Studio's bundle identifier — the Bambu app most likely to
+    /// actually be installed on a Mac (Bambu Handy is phone-only). Opened
+    /// via NSWorkspace if present; falls back to a plain alert (mentioning
+    /// both Handy and Studio) if it isn't, rather than guessing at a URL
+    /// scheme or App Store listing that might be wrong.
+    private static let bambuStudioBundleID = "com.bambulab.bambu-studio"
 
     private var authorized = false
 
     override init() {
         super.init()
         UNUserNotificationCenter.current().delegate = self
-        let startAction = UNNotificationAction(
-            identifier: Self.startDryingActionID,
-            title: "Iniciar secagem agora",
+        let openAction = UNNotificationAction(
+            identifier: Self.openBambuAppActionID,
+            title: "Abrir app da Bambu",
             options: [.foreground]
         )
         let category = UNNotificationCategory(
             identifier: Self.categoryID,
-            actions: [startAction],
+            actions: [openAction],
             intentIdentifiers: [],
             options: []
         )
@@ -111,34 +128,40 @@ final class DryingNotificationManager: NSObject, UNUserNotificationCenterDelegat
         defer { completionHandler() }
         print("[Drying] notification response received: actionIdentifier=\(response.actionIdentifier)")
 
-        // React the same way whether you tap the explicit "Iniciar secagem
-        // agora" action button, or just click the notification body itself
+        // React the same way whether you tap the explicit "Abrir app da
+        // Bambu" action button, or just click the notification body itself
         // (UNNotificationDefaultActionIdentifier) — that's the more natural
         // thing to click, and it did nothing before this, which looked
         // exactly like the notification being broken.
-        guard response.actionIdentifier == Self.startDryingActionID
+        guard response.actionIdentifier == Self.openBambuAppActionID
             || response.actionIdentifier == UNNotificationDefaultActionIdentifier else {
-            print("[Drying] ignoring notification response — not the start-drying action or a default tap (identifier: \(response.actionIdentifier))")
+            print("[Drying] ignoring notification response — not the open-Bambu-app action or a default tap (identifier: \(response.actionIdentifier))")
             return
         }
 
-        let info = response.notification.request.content.userInfo
-        guard let amsID = info["amsID"] as? Int,
-              let trayIndex = info["trayIndex"] as? Int,
-              let filamentType = info["filamentType"] as? String,
-              let humidityPercent = info["humidityPercent"] as? Double else {
-            print("[Drying] couldn't parse userInfo from notification: \(info)")
-            return
-        }
-
-        guard onStartDryingAction != nil else {
-            print("[Drying] onStartDryingAction handler isn't set yet — the tap arrived before AppState finished wiring it up")
-            return
-        }
-
-        print("[Drying] opening confirmation for AMS \(amsID + 1), slot \(trayIndex + 1) (\(filamentType))")
         DispatchQueue.main.async {
-            self.onStartDryingAction?(amsID, trayIndex, filamentType, humidityPercent)
+            Self.openBambuApp()
         }
+    }
+
+    /// Opens Bambu Studio if it's installed (the Bambu app most likely to
+    /// be on a Mac); otherwise shows a plain alert pointing at Bambu Handy
+    /// (phone) or Bambu Studio (desktop) by name, rather than guessing at
+    /// a URL scheme or download link that might be wrong. See the class
+    /// doc comment for why this app doesn't try to send the command itself.
+    static func openBambuApp() {
+        #if canImport(AppKit)
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bambuStudioBundleID) {
+            NSWorkspace.shared.open(url)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Abra o app da Bambu pra secar"
+        alert.informativeText = "O OBS Assistants não consegue enviar o comando de secagem nesse modelo/firmware (a impressora exige um canal seguro só a Bambu Lab tem — veja a issue #2 no GitHub do projeto). Inicie a secagem pelo Bambu Handy (celular) ou pelo Bambu Studio."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+        #endif
     }
 }

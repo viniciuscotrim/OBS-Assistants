@@ -140,21 +140,24 @@ struct DryConfirmationView: View {
                 Toggle("Secagem automática (sempre, daqui pra frente)", isOn: $settings.autoDryEnabled)
                     .toggleStyle(.checkbox)
                     .font(.system(size: 11))
+                    .disabled(true)
                 Toggle("Secar até umidade ideal (senão, aceita até o máximo)", isOn: $settings.dryToIdealEnabled)
                     .toggleStyle(.checkbox)
                     .font(.system(size: 11))
+                    .disabled(true)
                 Toggle("Parar sozinho quando a umidade chegar no alvo", isOn: $settings.autoHumidityStopEnabled)
                     .toggleStyle(.checkbox)
                     .font(.system(size: 11))
-                Text("Vale pra qualquer AMS a partir de agora, não só este — são as mesmas opções da seção \"Secagem do AMS\" no menu.")
+                    .disabled(true)
+                Text("Travado por enquanto — confirmamos que o comando não faz efeito nesse modelo/firmware sem uma assinatura que só o app oficial da Bambu gera. Detalhes: issue #2 no GitHub do projeto.")
                     .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Text("Comando não-oficial (engenharia reversa da comunidade) — confirme no app Bambu Handy/Studio que a secagem realmente começou.")
+            Text("Comando não-oficial (engenharia reversa da comunidade) — pode não fazer efeito dependendo do modelo/firmware. Confirme no app Bambu Handy/Studio que a secagem realmente começou; se não começar, use o app oficial diretamente.")
                 .font(.system(size: 9))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.orange)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {

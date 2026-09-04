@@ -100,12 +100,26 @@ private struct DryingSession {
 /// cycle doesn't restart it in a loop). Also owns the optional
 /// humidity-based auto-stop monitoring loop.
 ///
-/// **The `ams_filament_drying` MQTT command is community reverse-engineered,
-/// not documented by Bambu Lab** (see BambuConnectionManager). Automatic
-/// mode is off by default for exactly that reason — test the manual path
-/// first (low temp, short duration) and confirm via the official Bambu app
-/// that it actually did something sane before ever turning auto mode on.
+/// **Automatic mode (auto-start and humidity-based auto-stop) is
+/// currently disabled at the code level — see `automationSupported`
+/// below — regardless of what `AppSettings.autoDryEnabled` /
+/// `autoHumidityStopEnabled` happen to be persisted as.** Confirmed on a
+/// real X2D (github.com/viniciuscotrim/OBS-Assistants/issues/2): newer
+/// firmware requires `ams_filament_drying` to carry a cryptographic
+/// signature only Bambu Lab's own software can produce — sent without it,
+/// the printer accepts the MQTT publish with no error but never actually
+/// starts/stops drying. An *automatic*, unattended command that silently
+/// does nothing is worse than no automation at all — it would look like
+/// it worked. The corresponding toggles are also disabled in the UI (see
+/// PrinterOverlayView/DryConfirmationView) so they can't be turned on in
+/// the first place; this is the belt-and-suspenders code-level guard in
+/// case a persisted value from before this change is still `true`.
 final class DryingController {
+    /// See the class doc comment — hard-disables automatic start/stop
+    /// regardless of the persisted settings, until Bambu Lab exposes an
+    /// official, sanctioned way for third-party software to sign this
+    /// command (or ships a firmware/API path that doesn't require it).
+    private static let automationSupported = false
     /// A baseline used only to decide whether an *unidentified* filament's
     /// slot is worth bothering you about at all — real per-type thresholds
     /// never apply to an unknown type (see DryingAlertKind.unknownFilamentType).
@@ -169,7 +183,7 @@ final class DryingController {
             let canActAutomatically: Bool
             if case .mixedFilamentTypes = alert.kind { canActAutomatically = false } else { canActAutomatically = true }
 
-            if settings.autoDryEnabled, canActAutomatically, let profile = alert.suggestedProfile {
+            if Self.automationSupported, settings.autoDryEnabled, canActAutomatically, let profile = alert.suggestedProfile {
                 if isCooldownElapsed(amsID: amsID, profile: profile) {
                     startDrying(amsID: amsID, profile: profile, rotateTray: settings.rotateTrayDefaultEnabled, alert: alert)
                 } else {
@@ -198,7 +212,7 @@ final class DryingController {
         if let alert {
             onAutoDryStarted?(alert, profile)
         }
-        if settings.autoHumidityStopEnabled {
+        if Self.automationSupported, settings.autoHumidityStopEnabled {
             let target = (settings.dryToIdealEnabled ? profile.idealHumidityPercent : profile.maxHumidityPercent) - 1
             activeSessions[amsID] = DryingSession(amsID: amsID, filamentType: profile.filamentType, targetHumidityPercent: max(0, target), startedAt: Date(), lastCheckedAt: Date())
         }

@@ -262,45 +262,38 @@ struct PrinterOverlayView: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 4) {
+                    Text("Automação bloqueada — aguardando suporte da Bambu")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.orange)
+                    Text("Confirmamos (captura real de tráfego MQTT, impressora X2D) que a impressora exige uma assinatura criptográfica que só o app oficial da Bambu consegue gerar — sem ela, o comando é aceito sem erro mas nunca liga a secagem de verdade. Automatizar algo que silenciosamente não faz efeito é pior que não ter automação — pareceria estar funcionando. As opções abaixo ficam travadas até a Bambu Lab expor um caminho oficial pra isso. Detalhes: github.com/viniciuscotrim/OBS-Assistants/issues/2")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
                     Toggle("Secagem automática", isOn: $settings.autoDryEnabled)
                         .toggleStyle(.checkbox)
                         .font(.system(size: 11))
-                    Text(settings.autoDryEnabled
-                         ? "Ligado: um slot acima do limite do tipo dele inicia a secagem sozinho, sem confirmar (exceto quando há mais de um tipo de filamento no mesmo AMS — nesse caso sempre pede confirmação). Cooldown de segurança evita reiniciar em loop."
-                         : "Desligado: você só recebe uma notificação com a opção de iniciar manualmente.")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-
+                        .disabled(true)
                     Toggle("Secar até umidade ideal", isOn: $settings.dryToIdealEnabled)
                         .toggleStyle(.checkbox)
                         .font(.system(size: 11))
-                    Text(settings.dryToIdealEnabled
-                         ? "Ligado: dispara já ao passar da umidade IDEAL de cada tipo (mais sensível), não só do máximo aceitável."
-                         : "Desligado: só dispara ao passar da umidade MÁXIMA aceitável — ficar entre ideal e máximo não precisa secar.")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-
+                        .disabled(true)
                     Toggle("Parar automaticamente por umidade", isOn: $settings.autoHumidityStopEnabled)
                         .toggleStyle(.checkbox)
                         .font(.system(size: 11))
-                    Text(settings.autoHumidityStopEnabled
-                         ? "Ligado: checa a umidade a cada 5 min durante a secagem e manda o comando de parar sozinho ao chegar 1% abaixo do alvo (ideal ou máximo, conforme acima). A duração configurada vira só um teto de segurança — trava a edição dela abaixo."
-                         : "Desligado: a secagem roda pela duração configurada e para no tempo, sem monitorar a umidade.")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .disabled(true)
+
+                    Divider()
 
                     Toggle("Girar bobina durante a secagem (padrão)", isOn: $settings.rotateTrayDefaultEnabled)
                         .toggleStyle(.checkbox)
                         .font(.system(size: 11))
-                    Text("Valor inicial da opção \"girar bobina\" toda vez que uma secagem começa (confirmação manual ou automática) — sempre pode ser mudado por ciclo na janela de confirmação.")
+                    Text("Valor inicial da opção \"girar bobina\" toda vez que uma secagem começa manualmente — sempre pode ser mudado por ciclo na janela de confirmação. Não depende da assinatura acima (é só um parâmetro do comando, o bloqueio é sobre o comando fazer efeito ou não).")
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Comando de secagem confirmado por captura real de tráfego MQTT (não documentado oficialmente pela Bambu) — teste manual primeiro (temp baixa, tempo curto) e confirme no app oficial antes de confiar no automático.")
+                    Text("O controle manual abaixo continua disponível pra testar (pode funcionar em outros modelos/firmwares) — a notificação de umidade alta agora te leva direto pro app oficial da Bambu, que é onde o comando funciona de verdade.")
                         .font(.system(size: 9))
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)

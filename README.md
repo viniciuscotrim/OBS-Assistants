@@ -77,10 +77,32 @@ modelo Bambu Lab (X1/P1/A1/H2D…) — o protocolo MQTT é o mesmo em todos, ver
   (ex: "231/450" pra progresso/total), com um editor completo no menu.
 - **Ordem e visibilidade dos campos** — escolha quais campos aparecem no
   overlay e em que ordem (grid esquerda→direita, cima→baixo).
-- **Secagem do AMS** — thresholds de umidade por tipo de filamento,
-  notificação quando um slot passa do limite, início automático opcional
-  (com auto-stop por umidade ou por duração fixa), botão manual pra iniciar
-  secagem em qualquer slot.
+- **Secagem do AMS** 🚧 **em desenvolvimento, aguardando suporte oficial da
+  Bambu Lab** — thresholds de umidade por tipo de filamento e notificação
+  quando um slot passa do limite já funcionam normalmente (é só leitura de
+  status via MQTT, que a Bambu não restringe). O envio do comando pra
+  *iniciar/parar a secagem em si*, porém, **não funciona em firmwares mais
+  novos** (confirmado numa X2D) — a impressora agora exige uma assinatura
+  criptográfica que só o app oficial da Bambu consegue gerar; sem ela, o
+  comando é aceito pelo MQTT sem erro nenhum, mas nunca liga o
+  aquecedor de verdade. Isso não é um bug deste app — é a Bambu Lab
+  restringindo esse tipo de comando de propósito (documentado por eles
+  mesmos), e replicar aquela assinatura seria contornar um controle de
+  segurança que eles fizeram por um motivo. Por enquanto:
+  - A notificação de umidade alta te leva direto pro **app oficial da
+    Bambu** (Handy ou Studio) em vez de tentar iniciar por aqui.
+  - As opções de automação (auto-start, auto-stop por umidade) ficam
+    **travadas na UI** — ativar algo que silenciosamente não funciona
+    seria pior que não ter automação nenhuma.
+  - O controle manual (botão "Secar"/"Parar" por slot) continua
+    disponível pra teste — pode funcionar em modelos/firmwares mais
+    antigos onde essa exigência de assinatura ainda não existe.
+  - Acompanhe em [issue #2](https://github.com/viniciuscotrim/OBS-Assistants/issues/2)
+    — tem a investigação completa (captura real do tráfego MQTT
+    comparando o comando deste app com o do Bambu Studio) e os caminhos
+    considerados (modo Developer/LAN-only da impressora, login na conta
+    Bambu, SDK oficial da Bambu Lab) e por que nenhum resolve sem
+    trade-offs que valem a pena discutir antes de implementar.
 - **Aparência**: tema (dark/twitch/transparente), escala de texto, escala
   da caixa (largura/altura independentes), auto-fit de texto.
 - A URL do OBS é **estática** — muda tema/escala/campos no app e o overlay
@@ -177,7 +199,9 @@ um test run nunca sobrescrever a config real de um usuário:
   que o app oficial da Bambu envia), sem nunca enviar nada.
 - `OA_DRY_TEST=<amsID>:<tipo>:<tempC>:<horas>` /
   `OA_DRY_STOP_TEST=<amsID>` — envia um comando real de secagem/parada pro
-  AMS, contra hardware de verdade.
+  AMS, contra hardware de verdade. **Pode não fazer efeito** em firmwares
+  mais novos (ver "Secagem do AMS" acima e a issue #2) — publica sem erro
+  no MQTT mas a impressora pode simplesmente ignorar.
 - `OA_PRINT_AMS_STATUS=1` — conecta e imprime o status real de cada slot do
   AMS (filamento, umidade, secagem ativa) a cada ~2s por ~80s, depois sai.
   Usado pra descobrir o amsID/tipo de filamento reais antes de rodar
