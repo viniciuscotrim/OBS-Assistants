@@ -51,6 +51,28 @@ final class NowPlayingState: ObservableObject {
     /// audio would just lose the sound entirely.
     @Published private(set) var isLocalMuted = false
     @Published private(set) var isAudioRoutingBusy = false
+
+    // MARK: DRM auto-mute — independent of the two toggles above (and of
+    // each other's on/off state); see `applyDRMPolicy` for the full
+    // behavior. Opt-in, off by default.
+    /// User preference: when on, a track Music.app itself reports as
+    /// DRM-protected (Apple Music streaming/subscription content, or an
+    /// older FairPlay purchase) never reaches the stream's audio, even
+    /// while broadcasting is otherwise on. Independent of `isBroadcasting`/
+    /// `isLocalMuted` — toggling this alone never starts/stops capture or
+    /// mutes local playback by itself.
+    @Published var isDRMProtectionEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(isDRMProtectionEnabled, forKey: Keys.drmProtectionEnabled)
+            poller.drmProtectionEnabled = isDRMProtectionEnabled
+            applyDRMPolicy(for: nowPlaying)
+        }
+    }
+    /// Whether the stream's audio is *actually* being silenced right now
+    /// for the current track (`isDRMProtectionEnabled && nowPlaying.hasDRM`)
+    /// — mirrors what's sent to the overlay as `drmAudioSilenced`, exposed
+    /// here too for the menu/settings window to show the same state.
+    @Published private(set) var isDRMSilencingStream = false
     /// Backing storage for the (macOS 14.2+-only) capture engine, boxed as
     /// `Any` so this property can exist on a class that itself must keep
     /// supporting older macOS — see `audioCapture` below.
@@ -62,6 +84,7 @@ final class NowPlayingState: ObservableObject {
     private enum Keys {
         static let port = "nowPlayingPort"
         static let theme = "nowPlayingTheme"
+        static let drmProtectionEnabled = "nowPlayingDRMProtectionEnabled"
     }
 
     init() {
@@ -69,13 +92,17 @@ final class NowPlayingState: ObservableObject {
         self.port = savedPort == 0 ? 8080 : savedPort
         let savedTheme = UserDefaults.standard.string(forKey: Keys.theme).flatMap(NowPlayingTheme.init(rawValue:))
         self.theme = savedTheme ?? .dark
+        self.isDRMProtectionEnabled = UserDefaults.standard.bool(forKey: Keys.drmProtectionEnabled)
+        poller.drmProtectionEnabled = self.isDRMProtectionEnabled
 
         server.snapshotProvider = { [poller] in poller.latest }
         server.artworkURLProvider = { [poller] in
             FileManager.default.fileExists(atPath: poller.artworkFileURL.path) ? poller.artworkFileURL : nil
         }
         poller.onUpdate = { [weak self] info in
-            self?.updateNowPlayingIfNeeded(info)
+            guard let self else { return }
+            self.applyDRMPolicy(for: info)
+            self.updateNowPlayingIfNeeded(info)
         }
 
         // The Music.app poller runs regardless (cheap, local, just keeps the
@@ -84,6 +111,22 @@ final class NowPlayingState: ObservableObject {
         // other two overlays. See OBSAssistantsApp/AppState for the printer
         // side of this — no overlay server auto-starts anymore.
         poller.start()
+
+        // Diagnostic-only: starts the server right away instead of waiting
+        // for the menu's "Iniciar" button — lets you curl /nowplaying
+        // immediately to check its JSON. Deliberately checked *here*, in
+        // this plain class's own init, rather than in OBSAssistantsApp's
+        // init reading `self.nowPlayingState` — a `@StateObject`'s wrapped
+        // value isn't reliable to read from the owning App/View's own
+        // `init()` (confirmed the hard way: it silently returns a
+        // throwaway instance there, distinct from the one SwiftUI actually
+        // installs — this diagnostic ended up starting a server on an
+        // instance that was deallocated moments later, `[weak self]` in
+        // NowPlayingHTTPServer's connection handler going nil and every
+        // request just hanging with no response, no error, nothing).
+        if ProcessInfo.processInfo.environment["OA_START_NOWPLAYING_SERVER"] == "1" {
+            startServer()
+        }
     }
 
     /// The menu bar UI only ever displays title/artist/album/play-state — never
@@ -110,6 +153,40 @@ final class NowPlayingState: ObservableObject {
             current.album != info.album
         guard displayRelevantChange else { return }
         nowPlaying = info
+    }
+
+    // MARK: - DRM auto-mute
+
+    /// Runs on every poll tick (not just display-relevant changes) so it
+    /// reacts the instant a DRM'd track starts, without waiting on
+    /// `updateNowPlayingIfNeeded`'s own throttling. Idempotent — safe to
+    /// call repeatedly with the same state (setting `muteStreamOutput` to
+    /// its current value, or pausing an already-paused player, are both
+    /// no-ops), which is what happens every second while a DRM'd track
+    /// keeps playing.
+    ///
+    /// Behavior (independent of `isDRMProtectionEnabled` toggling
+    /// `isBroadcasting`/`isLocalMuted` — it only ever reads them):
+    ///  - Not protected, or track has no DRM: stream gets real audio,
+    ///    nothing else happens.
+    ///  - Protected and DRM detected: the *stream's* audio is silenced
+    ///    (capture keeps running — see AudioCaptureEngine.muteStreamOutput
+    ///    — so it resumes instantly on the next non-DRM track). Local
+    ///    playback is untouched **unless** "Também silenciar no Mac" is
+    ///    also on — in that case there'd be no audio outlet left at all
+    ///    (stream silenced for rights, speakers already muted), so the
+    ///    player is paused instead of "playing" into total silence.
+    private func applyDRMPolicy(for info: NowPlayingInfo) {
+        let shouldSilence = isDRMProtectionEnabled && info.hasDRM && info.trackId != "none"
+        isDRMSilencingStream = shouldSilence
+
+        if #available(macOS 14.2, *), isBroadcasting {
+            audioCapture.muteStreamOutput = shouldSilence
+        }
+
+        if shouldSilence && isLocalMuted && info.isPlaying {
+            poller.pausePlayback()
+        }
     }
 
     // MARK: - Audio routing ("Music só no streaming")
@@ -162,6 +239,11 @@ final class NowPlayingState: ObservableObject {
                     case .success:
                         self.isBroadcasting = true
                         self.lastError = nil
+                        // Apply the DRM policy against the current track
+                        // right away — if it's already a DRM'd track and
+                        // protection is on, don't leak even one chunk of
+                        // real audio before the next poll tick would have.
+                        self.applyDRMPolicy(for: self.nowPlaying)
                     case .failure(let error):
                         self.isBroadcasting = false
                         self.lastError = error.description
@@ -207,6 +289,12 @@ final class NowPlayingState: ObservableObject {
             isLocalMuted = false
         }
         isAudioRoutingBusy = false
+        // Turning local mute on can newly leave a DRM'd track with no
+        // audio outlet at all (stream already silenced, speakers now
+        // muted too) — re-evaluate so that pauses the player instead of
+        // waiting for the next poll tick. Turning it off never needs to
+        // pause anything, but re-running is harmless either way.
+        applyDRMPolicy(for: nowPlaying)
     }
 
     func startServer() {

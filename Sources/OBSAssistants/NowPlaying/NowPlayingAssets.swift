@@ -20,27 +20,30 @@ enum NowPlayingAssets {
     </head>
     <body>
       <div id="card" class="card hidden">
-        <div class="artwork-wrap">
-          <img id="art-a" class="artwork" alt="">
-          <img id="art-b" class="artwork" alt="">
-        </div>
-        <div class="info">
-          <div class="marquee-mask" id="title-mask">
-            <div class="marquee-track" id="title-track">
-              <span class="title" id="title-text"></span>
+        <div id="drm-banner" class="drm-banner" hidden>🔒 Áudio silenciado no stream — direitos autorais</div>
+        <div class="card-row">
+          <div class="artwork-wrap">
+            <img id="art-a" class="artwork" alt="">
+            <img id="art-b" class="artwork" alt="">
+          </div>
+          <div class="info">
+            <div class="marquee-mask" id="title-mask">
+              <div class="marquee-track" id="title-track">
+                <span class="title" id="title-text"></span>
+              </div>
             </div>
-          </div>
-          <div class="marquee-mask" id="artist-mask">
-            <div class="marquee-track" id="artist-track">
-              <span class="artist" id="artist-text"></span>
+            <div class="marquee-mask" id="artist-mask">
+              <div class="marquee-track" id="artist-track">
+                <span class="artist" id="artist-text"></span>
+              </div>
             </div>
-          </div>
-          <div class="progress-outer">
-            <div class="progress-inner" id="progress-bar"></div>
-          </div>
-          <div class="time-row">
-            <span id="time-current">0:00</span>
-            <span id="time-total">0:00</span>
+            <div class="progress-outer">
+              <div class="progress-inner" id="progress-bar"></div>
+            </div>
+            <div class="time-row">
+              <span id="time-current">0:00</span>
+              <span id="time-total">0:00</span>
+            </div>
           </div>
         </div>
       </div>
@@ -69,8 +72,8 @@ enum NowPlayingAssets {
       left: 24px;
       bottom: 24px;
       display: flex;
-      align-items: center;
-      gap: 14px;
+      flex-direction: column;
+      gap: 8px;
       padding: 12px 18px 12px 12px;
       border-radius: 14px;
       width: 420px;
@@ -80,6 +83,40 @@ enum NowPlayingAssets {
 
     .card.hidden {
       opacity: 0;
+    }
+
+    /* The artwork+title/artist/progress row — was the whole .card's layout
+       before the DRM banner (below) needed a row of its own above it. */
+    .card-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    /* ---------- DRM auto-mute banner ---------- */
+    /* Shown/hidden purely from `drmAudioSilenced` in /nowplaying — never
+       hides the artwork/title/artist/progress below it, just adds this
+       strip above them (see NowPlayingState.applyDRMPolicy for when the
+       server actually sets that flag). Same look across every theme
+       (dark/twitch-purple/transparent) on purpose — it's a warning, not
+       part of the themed "now playing" look, so it should read the same
+       regardless of which theme is active. */
+    .drm-banner {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 8px;
+      background: rgba(217, 62, 62, 0.85);
+      color: #ffffff;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+      width: fit-content;
+    }
+
+    .drm-banner[hidden] {
+      display: none;
     }
 
     /* ---------- Themes ---------- */
@@ -245,6 +282,7 @@ enum NowPlayingAssets {
       const progressBar = document.getElementById("progress-bar");
       const timeCurrentEl = document.getElementById("time-current");
       const timeTotalEl = document.getElementById("time-total");
+      const drmBanner = document.getElementById("drm-banner");
 
       let activeArt = artA;
       let inactiveArt = artB;
@@ -341,6 +379,12 @@ enum NowPlayingAssets {
         const trackChanged = !lastData || lastData.trackId !== data.trackId;
         lastData = data;
         lastFetchClientTime = performance.now();
+
+        // Independent of everything else below — never hides the artwork/
+        // title/artist/progress, just adds this strip when the current
+        // track's stream audio is muted for rights reasons (server-computed
+        // in /nowplaying's drmAudioSilenced — see NowPlayingState.applyDRMPolicy).
+        drmBanner.hidden = !data.drmAudioSilenced;
 
         if (data.trackId === "none" || (!data.isPlaying && data.durationMs === 0)) {
           scheduleAutoHide();

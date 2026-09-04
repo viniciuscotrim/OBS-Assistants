@@ -42,6 +42,7 @@ struct OBSAssistantsApp: App {
 
         let state = AppState()
         _appState = StateObject(wrappedValue: state)
+
         // None of the three overlay HTTP servers (printer, Bambu Studio, Now
         // Playing) auto-start anymore — they come up stopped, and the user
         // starts whichever one(s) they actually want from the menu's

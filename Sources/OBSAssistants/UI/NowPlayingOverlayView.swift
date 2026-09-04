@@ -157,6 +157,19 @@ struct NowPlayingOverlayView: View {
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+
+            Toggle(isOn: $nowPlaying.isDRMProtectionEnabled) {
+                Text("Silenciar automaticamente músicas com DRM no stream")
+                    .font(.system(size: 12))
+            }
+            .disabled(!nowPlaying.isAudioCaptureSupported)
+
+            Text(drmHelpText)
+                .font(.system(size: 10))
+                .foregroundStyle(nowPlaying.isDRMSilencingStream ? .orange : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -171,6 +184,17 @@ struct NowPlayingOverlayView: View {
         } else {
             return "Desligado: o overlay não envia áudio nenhum — ative pra o OBS capturar o som do Music.app direto pela Browser Source (com ou sem silenciar localmente)."
         }
+    }
+
+    /// Independent of the two toggles above — see NowPlayingState's
+    /// `applyDRMPolicy` doc comment for the exact behavior (silences only
+    /// the stream by default; also pauses the player if "Também silenciar
+    /// no Mac" is on too, since then there'd be no audio outlet left).
+    private var drmHelpText: String {
+        if nowPlaying.isDRMSilencingStream {
+            return "Ativo agora: a faixa atual é protegida por direitos autorais (Apple Music/DRM) — o áudio dela está mudo no overlay/stream." + (nowPlaying.isLocalMuted ? " Como \"Também silenciar no Mac\" também está ligado, o player foi pausado (sem isso, não sobraria áudio em lugar nenhum)." : " Você continua ouvindo normalmente no Mac.")
+        }
+        return "Independente dos dois toggles acima. Quando ligado, uma faixa que o Music.app reporta como protegida (catálogo de streaming da Apple Music, ou compra antiga com FairPlay) nunca vai pro stream, mesmo com a transmissão ligada — só o áudio dela é mudo no overlay, o resto continua tocando normalmente."
     }
 
     // MARK: URL

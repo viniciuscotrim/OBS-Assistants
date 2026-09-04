@@ -158,6 +158,20 @@ relatório MQTT da impressora nunca inclui esses detalhes.
     toque **só** no stream, mudo nos seus alto-falantes (um tap de
     processo no Core Audio, `macOS 14.2+`) — só fica disponível com a
     transmissão ligada.
+- **Silenciar automaticamente músicas com DRM no stream** — terceiro
+  toggle, **independente** dos dois de áudio acima. Detecta faixas
+  protegidas (catálogo de streaming da Apple Music, ou compra antiga com
+  FairPlay pré-2009) direto pelo Music.app — confirmado contra o
+  dicionário AppleScript real dele (`cloud status` = `subscription`, ou
+  `kind` contendo "Protected"), não é uma lista fixa de artistas/álbuns.
+  Quando detecta e o toggle está ligado: só o áudio *dessa faixa* fica
+  mudo no overlay (a captura continua rodando — volta o áudio sozinho na
+  próxima faixa sem DRM); localmente no Mac você continua ouvindo
+  normal, **a menos que** "Também silenciar no Mac" também esteja
+  ligado — nesse caso não sobraria áudio em lugar nenhum, então o player
+  é pausado em vez de "tocar" em silêncio total. O overlay mostra um
+  aviso ("🔒 Áudio silenciado no stream — direitos autorais") sem nunca
+  esconder a capa/título/progresso.
 
 ---
 

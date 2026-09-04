@@ -101,6 +101,21 @@ final class AudioCaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate {
     /// as it's captured. Invoked on the stream's sample-handler queue.
     var onPCMChunk: ((Data) -> Void)?
 
+    /// When true, `onPCMChunk` is still called every chunk (keeps the
+    /// WebSocket/overlay timing alive, no audible glitch) but with the
+    /// bytes zeroed out — digital silence — instead of the real captured
+    /// audio. Used for the DRM auto-mute toggle: the *capture itself*
+    /// keeps running (so it resumes instantly once a non-DRM track plays),
+    /// only the output is muted. Lock-protected: set from NowPlayingState
+    /// on the main actor, read from this engine's own sample-handler
+    /// queue — see `handleCaptured`.
+    var muteStreamOutput: Bool {
+        get { muteStreamLock.lock(); defer { muteStreamLock.unlock() }; return _muteStreamOutput }
+        set { muteStreamLock.lock(); _muteStreamOutput = newValue; muteStreamLock.unlock() }
+    }
+    private let muteStreamLock = NSLock()
+    private var _muteStreamOutput = false
+
     // MARK: - Capture (ScreenCaptureKit -> onPCMChunk), independent of mute
 
     func startCapture(completion: @escaping (Result<Void, AudioCaptureError>) -> Void) {
@@ -382,7 +397,7 @@ final class AudioCaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate {
         // int16ChannelData is interleaved for an interleaved format, laid out
         // contiguously in channelData[0].
         let byteCount = frameCount * Int(targetFormat.channelCount) * MemoryLayout<Int16>.size
-        let data = Data(bytes: int16Data[0], count: byteCount)
+        let data = muteStreamOutput ? Data(count: byteCount) : Data(bytes: int16Data[0], count: byteCount)
         onPCMChunk(data)
     }
 

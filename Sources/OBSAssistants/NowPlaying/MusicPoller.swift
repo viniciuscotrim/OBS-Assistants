@@ -24,18 +24,49 @@ final class MusicPoller {
     private var artworkVersion: Int = 0
     private(set) var latest: NowPlayingInfo = .idle
 
+    /// Set from NowPlayingState (main actor) whenever the "Silenciar
+    /// automaticamente músicas com DRM no stream" toggle changes — read
+    /// here, on this poller's own queue, to compute `drmAudioSilenced`
+    /// for each snapshot without crossing actor isolation. Lock-protected
+    /// since it's written from the main actor and read from `queue`.
+    var drmProtectionEnabled: Bool {
+        get { drmLock.lock(); defer { drmLock.unlock() }; return _drmProtectionEnabled }
+        set { drmLock.lock(); _drmProtectionEnabled = newValue; drmLock.unlock() }
+    }
+    private let drmLock = NSLock()
+    private var _drmProtectionEnabled = false
+
+    /// Confirmed against Music.app's real AppleScript dictionary
+    /// (`com.apple.Music.sdef`) rather than guessed: `cloud status` of
+    /// `subscription` is Apple Music streaming catalog content — rented,
+    /// not owned, and FairPlay-DRM-protected for playback. `kind`
+    /// containing "Protected" catches the older (pre-2009) FairPlay
+    /// purchased-track DRM, still occasionally present in older libraries.
+    ///
+    /// **`tell application "Music"` can hang indefinitely when Music.app
+    /// isn't running** — confirmed by sampling a genuinely stuck process:
+    /// the very first execution sat forever deep inside
+    /// `TUASApplication::Send`, on the main thread as much as any
+    /// background queue (ruled that out directly too, with an isolated
+    /// harness outside this app). The read most consistent with that
+    /// evidence: resolving/launching the target app to service the `tell`
+    /// — needed even just to *compile* a script mentioning it — can itself
+    /// hang for this specific app/LSUIElement-caller combination, and
+    /// AppleScript's own `with timeout of N seconds` does **not** bound
+    /// that (verified: adding it here changed nothing) — it only bounds
+    /// Apple Events sent *during* execution, not this earlier resolution
+    /// step. The actual fix is `pollTick()` checking
+    /// `NSWorkspace.runningApplications` — plain Swift, no Apple Events —
+    /// **before** ever executing this script, so it's simply never asked
+    /// to `tell` an app that isn't running in the first place.
     private let statusScript: NSAppleScript = {
         let source = """
-        set outStr to "STOPPED|||||||||"
+        set outStr to "STOPPED|||||||||||"
         try
-            tell application "System Events"
-                set isRunning to (name of processes) contains "Music"
-            end tell
-            if isRunning then
                 tell application "Music"
                     set curState to player state
                     if curState is stopped then
-                        return "STOPPED|||||||||"
+                        return "STOPPED|||||||||||"
                     end if
                     set trackName to ""
                     set trackArtist to ""
@@ -44,23 +75,45 @@ final class MusicPoller {
                     set trackPosition to 0
                     set trackId to "none"
                     try
-                        set trackName to name of current track
-                        set trackArtist to artist of current track
-                        set trackAlbum to album of current track
-                        set trackDuration to duration of current track
-                        set trackPosition to player position
-                        set trackId to (database ID of current track) as string
+                        with timeout of 2 seconds
+                            set trackName to name of current track
+                            set trackArtist to artist of current track
+                            set trackAlbum to album of current track
+                            set trackDuration to duration of current track
+                            set trackPosition to player position
+                            set trackId to (database ID of current track) as string
+                        end timeout
+                    end try
+                    set trackKindStr to ""
+                    try
+                        with timeout of 2 seconds
+                            set trackKindStr to kind of current track
+                        end timeout
+                    end try
+                    set trackCloudStr to ""
+                    try
+                        with timeout of 2 seconds
+                            set trackCloudStr to (cloud status of current track) as string
+                        end timeout
                     end try
                     set stateStr to "PAUSED"
                     if curState is playing then set stateStr to "PLAYING"
-                    set outStr to stateStr & "|||" & trackName & "|||" & trackArtist & "|||" & trackAlbum & "|||" & (trackDuration as string) & "|||" & (trackPosition as string) & "|||" & trackId
+                    set outStr to stateStr & "|||" & trackName & "|||" & trackArtist & "|||" & trackAlbum & "|||" & (trackDuration as string) & "|||" & (trackPosition as string) & "|||" & trackId & "|||" & trackKindStr & "|||" & trackCloudStr
                 end tell
-            end if
         end try
         return outStr
         """
         return NSAppleScript(source: source)!
     }()
+
+    /// `pause`, not `stop` — pause keeps the playback position (so resuming
+    /// picks up where it left off); `stop` would reset it to the start.
+    /// Used only when DRM protection is on, a DRM'd track is playing, and
+    /// "Também silenciar no Mac" is also on — there'd be no audio outlet
+    /// left at all (stream silenced for rights, local already muted), so
+    /// pausing is less surprising than letting it "play" into total
+    /// silence. See NowPlayingState.applyDRMPolicy.
+    private let pauseScript = NSAppleScript(source: "with timeout of 2 seconds\n tell application \"Music\" to pause\nend timeout")!
 
     private let artworkScript: NSAppleScript = {
         let source = """
@@ -92,9 +145,41 @@ final class MusicPoller {
         timer = nil
     }
 
+    /// **`NSAppleScript` must run on the main thread** — confirmed the hard
+    /// way: executed from this poller's own background `queue` (as every
+    /// script here always was, pre-dating the DRM feature), a call that
+    /// takes 0.17s on the main thread either hung indefinitely or took 8+
+    /// seconds off it, reproduced with a minimal isolated harness outside
+    /// this app entirely. Apple's own docs say the same thing. This
+    /// previously went unnoticed because it only actually surfaces once
+    /// Music.app isn't running — every earlier test in this session had it
+    /// open. `queue` still owns the *timer* (so the 1s cadence itself
+    /// doesn't touch the main thread's scheduling), but each tick now hops
+    /// to main for the actual `executeAndReturnError` call, same as
+    /// `extractArtwork()` and `pausePlayback()` below.
+    private func runOnMainThread<T>(_ body: () -> T) -> T {
+        if Thread.isMainThread { return body() }
+        return DispatchQueue.main.sync(execute: body)
+    }
+
+    /// Plain `NSWorkspace` check — no Apple Events at all, so it can never
+    /// hang the way `tell application "Music"` can when it isn't running
+    /// (see `statusScript`'s doc comment). This is what actually makes
+    /// that safe to call: by the time `pollTick()` reaches it, Music.app
+    /// is confirmed running.
+    private func isMusicRunning() -> Bool {
+        NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.apple.Music" }
+    }
+
     private func pollTick() {
+        guard isMusicRunning() else {
+            lastTrackId = ""
+            publish(.idle)
+            return
+        }
+
         var errorDict: NSDictionary?
-        let descriptor = statusScript.executeAndReturnError(&errorDict)
+        let descriptor = runOnMainThread { statusScript.executeAndReturnError(&errorDict) }
         if let errorDict {
             FileHandle.standardError.write(Data("AppleScript error: \(errorDict)\n".utf8))
         }
@@ -125,6 +210,10 @@ final class MusicPoller {
         let positionSeconds = Double(parts[5].replacingOccurrences(of: ",", with: ".")) ?? 0
         let trackId = parts[6]
         let isPlaying = (stateToken == "PLAYING")
+        let kindStr = parts.count > 7 ? parts[7] : ""
+        let cloudStatusStr = parts.count > 8 ? parts[8] : ""
+        let hasDRM = cloudStatusStr == "subscription" || kindStr.localizedCaseInsensitiveContains("protected")
+        let drmAudioSilenced = hasDRM && drmProtectionEnabled
 
         if trackId != lastTrackId {
             lastTrackId = trackId
@@ -142,14 +231,30 @@ final class MusicPoller {
             playbackState: isPlaying ? PlaybackState.playing.rawValue : PlaybackState.paused.rawValue,
             artworkUrl: hasArtwork ? "/artwork.png?v=\(artworkVersion)&t=\(trackId)" : nil,
             trackId: trackId,
-            serverTimeMs: Int(Date().timeIntervalSince1970 * 1000)
+            serverTimeMs: Int(Date().timeIntervalSince1970 * 1000),
+            hasDRM: hasDRM,
+            drmAudioSilenced: drmAudioSilenced
         )
         publish(info)
     }
 
+    /// See `pauseScript`'s doc comment. Fire-and-forget, on this poller's
+    /// own queue — never called from the AppleScript-executing thread
+    /// itself since it's invoked from NowPlayingState (main actor).
+    func pausePlayback() {
+        queue.async { [weak self] in
+            guard let self else { return }
+            var errorDict: NSDictionary?
+            _ = self.runOnMainThread { self.pauseScript.executeAndReturnError(&errorDict) }
+            if let errorDict {
+                FileHandle.standardError.write(Data("[DRM] AppleScript pause error: \(errorDict)\n".utf8))
+            }
+        }
+    }
+
     private func extractArtwork() {
         var errorDict: NSDictionary?
-        let descriptor = artworkScript.executeAndReturnError(&errorDict)
+        let descriptor = runOnMainThread { artworkScript.executeAndReturnError(&errorDict) }
         let data = descriptor.data
         guard !data.isEmpty, let image = NSImage(data: data) else {
             try? FileManager.default.removeItem(at: artworkFileURL)
