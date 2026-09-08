@@ -75,6 +75,33 @@ struct OBSAssistantsApp: App {
                 let expanded = (folder as NSString).expandingTildeInPath
                 let contents = try FileManager.default.contentsOfDirectory(atPath: expanded)
                 log("[Inspect3MF] raw directory listing (\(contents.count) entries): \(contents)")
+                // Diagnostic-only sweep: which of these already has a real
+                // "prediction" total-time value vs. just a header-only
+                // slice_info.config — see readNewestTotalPrintTimeSeconds's
+                // doc comment. Checks every .3mf here, not just the newest.
+                for name in contents where name.lowercased().hasSuffix(".3mf") {
+                    let fileURL = URL(fileURLWithPath: expanded).appendingPathComponent(name)
+                    if let data = BambuStudioProjectReader.extractMember(from: fileURL, member: "Metadata/slice_info.config") {
+                        let hasPlate = String(data: data, encoding: .utf8)?.contains("<plate>") ?? false
+                        log("[Inspect3MF] \(name): slice_info.config \(data.count) bytes, has <plate>: \(hasPlate)")
+                        if hasPlate {
+                            let folderOfThisFile = fileURL.deletingLastPathComponent().path
+                            // Only valid when this file happens to be the
+                            // newest in the folder, since the real function
+                            // always targets "newest" — fine for this
+                            // one-off diagnostic sweep.
+                            if let seconds = BambuStudioProjectReader.readNewestTotalPrintTimeSeconds(inFolder: folderOfThisFile) {
+                                log("[Inspect3MF] \(name): readNewestTotalPrintTimeSeconds (if newest) = \(seconds)s = \(BambuStudioProjectReader.formatDuration(seconds: seconds))")
+                            }
+                            if let text = String(data: data, encoding: .utf8), let range = text.range(of: "prediction") {
+                                let snippet = text[range.lowerBound...].prefix(60)
+                                log("[Inspect3MF] \(name): raw prediction snippet: \(snippet)")
+                            }
+                        }
+                    } else {
+                        log("[Inspect3MF] \(name): no slice_info.config member")
+                    }
+                }
             } catch {
                 log("[Inspect3MF] directory listing threw: \(error)")
             }
