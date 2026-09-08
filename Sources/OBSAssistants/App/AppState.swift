@@ -39,6 +39,16 @@ final class AppState: ObservableObject {
     /// so it's obvious at a glance whether this is actually today's file.
     @Published var studioProjectFileName: String = ""
     @Published var studioProjectReadAt: Date?
+    /// "Preview 3D" overlay's own HTTP server — independent listener/port,
+    /// same as `studioServerRunning`. Shows the sliced-plate render Bambu
+    /// Studio already produces for the same `.3mf` read above — see
+    /// PrintPreviewHTTPServer's doc comment.
+    @Published var previewServerRunning = false
+    /// Which member the current preview image came from (e.g.
+    /// "Metadata/plate_1.png") and when it was read — shown in the menu so
+    /// it's obvious at a glance this is (or isn't) today's print.
+    @Published var previewImageSourceFile: String = ""
+    @Published var previewImageReadAt: Date?
 
     private let connectionManager = BambuConnectionManager()
     private let httpServer = LocalHTTPServer()
@@ -46,6 +56,15 @@ final class AppState: ObservableObject {
     /// comment for why this is a fully separate instance/port from
     /// `httpServer` now, instead of the two sharing one listener.
     private let studioHttpServer = LocalHTTPServer()
+    /// The "Preview 3D" overlay's own listener — same independent-server
+    /// reasoning as `studioHttpServer`.
+    private let previewHttpServer = PrintPreviewHTTPServer()
+    /// Cached preview PNG bytes — read from the `.3mf` on the same
+    /// triggers as `refreshStudioProject()` (new job, folder change, the
+    /// 20s backstop timer), not on every single HTTP request, so an OBS
+    /// Browser Source polling every few seconds doesn't shell out to
+    /// `unzip` that often.
+    private var previewImageData: Data?
     private let discoveryService = PrinterDiscoveryService()
     private let lanScanner = LanCertificateScanner()
     private var dryingController: DryingController!
@@ -129,6 +148,13 @@ final class AppState: ObservableObject {
 
         studioHttpServer.statusProvider = { [weak self] in
             self?.statusQueue.sync { self?.cachedStudioStatusJSON ?? Data("{}".utf8) } ?? Data("{}".utf8)
+        }
+        // Same statusQueue-guarded read/write pattern as cachedStatusJSON —
+        // this closure runs on the HTTP server's own background queue, not
+        // the main actor, so previewImageData can't be touched directly
+        // from here.
+        previewHttpServer.imageProvider = { [weak self] in
+            self?.statusQueue.sync { self?.previewImageData } ?? nil
         }
         startStudioProjectRefreshTimer()
         refreshStudioProject()
@@ -315,7 +341,10 @@ final class AppState: ObservableObject {
     /// Re-scans `settings.studioProjectFolderPath` for its newest `.3mf`
     /// and updates `studioFields` — always clears to empty first so a
     /// removed folder, an empty one, or an unreadable file never leaves a
-    /// stale reading from a previous print on screen.
+    /// stale reading from a previous print on screen. Also refreshes the
+    /// "Preview 3D" overlay's cached image (same file, same triggers — a
+    /// new job/folder change/backstop tick is exactly when a new preview
+    /// would appear too), so there's one re-scan path instead of two.
     func refreshStudioProject() {
         guard !settings.studioProjectFolderPath.isEmpty,
               let info = BambuStudioProjectReader.readNewestProject(inFolder: settings.studioProjectFolderPath) else {
@@ -323,12 +352,31 @@ final class AppState: ObservableObject {
             studioProjectFileName = ""
             studioProjectReadAt = nil
             recomputeStudioFields()
+            refreshPreviewImage()
             return
         }
         studioRawFields = info.fields
         studioProjectFileName = info.fileName
         studioProjectReadAt = info.modifiedAt
         recomputeStudioFields()
+        refreshPreviewImage()
+    }
+
+    /// Re-reads the newest `.3mf`'s plate preview PNG — see
+    /// BambuStudioProjectReader.readNewestPlatePreview. Cleared to nil
+    /// (never left stale) whenever the folder's unset/empty or nothing
+    /// readable is found, same discipline as `refreshStudioProject`.
+    private func refreshPreviewImage() {
+        guard !settings.studioProjectFolderPath.isEmpty,
+              let preview = BambuStudioProjectReader.readNewestPlatePreview(inFolder: settings.studioProjectFolderPath) else {
+            statusQueue.sync { previewImageData = nil }
+            previewImageSourceFile = ""
+            previewImageReadAt = nil
+            return
+        }
+        statusQueue.sync { previewImageData = preview.imageData }
+        previewImageSourceFile = preview.fileName
+        previewImageReadAt = preview.modifiedAt
     }
 
     /// Mirrors `recomputeFields()` for the Studio overlay's own composite
@@ -525,6 +573,20 @@ final class AppState: ObservableObject {
     func stopStudioServer() {
         studioHttpServer.stop()
         studioServerRunning = false
+    }
+
+    func startPreviewServer() {
+        do {
+            try previewHttpServer.start(port: settings.previewHttpPort)
+            previewServerRunning = true
+        } catch {
+            previewServerRunning = false
+        }
+    }
+
+    func stopPreviewServer() {
+        previewHttpServer.stop()
+        previewServerRunning = false
     }
 
     // MARK: - /status JSON

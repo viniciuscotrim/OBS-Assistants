@@ -68,6 +68,37 @@ final class StudioOverlayWindowController {
     }
 }
 
+/// Owns the "Preview 3D" window — same pattern as
+/// StudioOverlayWindowController, a separate window/singleton.
+@MainActor
+final class PrintPreviewOverlayWindowController {
+    static let shared = PrintPreviewOverlayWindowController()
+
+    private var window: NSWindow?
+
+    func present(appState: AppState) {
+        if let window {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+            return
+        }
+
+        let content = PrintPreviewOverlayView().environmentObject(appState)
+        let hosting = NSHostingController(rootView: content)
+        let newWindow = NSWindow(contentViewController: hosting)
+        newWindow.title = "Preview 3D"
+        newWindow.styleMask = [.titled, .closable, .resizable, .miniaturizable]
+        newWindow.isReleasedWhenClosed = false
+        newWindow.center()
+        window = newWindow
+
+        NSApp.activate(ignoringOtherApps: true)
+        newWindow.makeKeyAndOrderFront(nil)
+        newWindow.orderFrontRegardless()
+    }
+}
+
 /// Owns the "Overlay Now Playing" window — same pattern as the other two,
 /// just takes a `NowPlayingState` (its own independent ObservableObject)
 /// instead of the printer's `AppState`.

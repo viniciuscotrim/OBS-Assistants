@@ -40,6 +40,93 @@ struct OBSAssistantsApp: App {
             exit(0)
         }
 
+        // Diagnostic-only: inspects the real internal structure of the
+        // newest .3mf in the configured Studio project folder — lists every
+        // ZIP member, then dumps stats + a preview of any Metadata/plate_*.gcode
+        // found, so the toolpath-preview overlay (4th "Servidores" row, in
+        // progress) gets built against confirmed real member names/format
+        // instead of assumed ones.
+        //
+        // Triggered by env var (works when launched from a shell that
+        // forwards it) OR a UserDefaults flag (works when launched via
+        // `open`, which does NOT forward the launching shell's environment —
+        // needed because Desktop-folder TCC access is granted per launched
+        // *process instance*, so this has to run as its own top-level
+        // process, not spawned from another app's shell). Output goes to
+        // both stdout and a fixed log file, since a plain-`open`-launched
+        // GUI process has no terminal attached to read stdout from.
+        let inspect3MFRequested = ProcessInfo.processInfo.environment["OA_INSPECT_3MF"] == "1"
+            || UserDefaults.standard.bool(forKey: "OAInspect3MFPending")
+        if inspect3MFRequested {
+            UserDefaults.standard.removeObject(forKey: "OAInspect3MFPending")
+            var logLines: [String] = []
+            func log(_ s: String) {
+                print(s)
+                logLines.append(s)
+            }
+            let logURL = URL(fileURLWithPath: "/tmp/oa_inspect3mf.log")
+            func flush() {
+                try? logLines.joined(separator: "\n").write(to: logURL, atomically: true, encoding: .utf8)
+            }
+
+            let folder = AppSettings.shared.studioProjectFolderPath
+            log("[Inspect3MF] folder: \(folder)")
+            do {
+                let expanded = (folder as NSString).expandingTildeInPath
+                let contents = try FileManager.default.contentsOfDirectory(atPath: expanded)
+                log("[Inspect3MF] raw directory listing (\(contents.count) entries): \(contents)")
+            } catch {
+                log("[Inspect3MF] directory listing threw: \(error)")
+            }
+            guard let fileURL = BambuStudioProjectReader.newestProjectFile(inFolder: folder) else {
+                log("[Inspect3MF] no .3mf found (folder unreadable or empty)")
+                flush()
+                exit(0)
+            }
+            log("[Inspect3MF] newest file: \(fileURL.lastPathComponent)")
+            let members = BambuStudioProjectReader.listMembers(of: fileURL)
+            if members.isEmpty {
+                log("[Inspect3MF] could not list ZIP members (unzip failed or file unreadable)")
+            } else {
+                log("[Inspect3MF] \(members.count) members:")
+                for m in members { log("    \(m)") }
+            }
+            let gcodeMembers = members.filter { $0.hasPrefix("Metadata/plate_") && $0.hasSuffix(".gcode") }
+            if gcodeMembers.isEmpty {
+                log("[Inspect3MF] no Metadata/plate_*.gcode member found")
+            }
+            for extra in ["Metadata/slice_info.config", "3D/Objects/object_1.model", "Metadata/model_settings.config"] {
+                guard let data = BambuStudioProjectReader.extractMember(from: fileURL, member: extra) else {
+                    log("[Inspect3MF] \(extra): extraction failed")
+                    continue
+                }
+                let text = String(data: data, encoding: .utf8) ?? "<non-utf8, \(data.count) bytes>"
+                log("[Inspect3MF] \(extra): \(data.count) bytes")
+                log("[Inspect3MF] \(extra) first 2000 chars:")
+                log(String(text.prefix(2000)))
+            }
+            for member in gcodeMembers {
+                guard let data = BambuStudioProjectReader.extractMember(from: fileURL, member: member) else {
+                    log("[Inspect3MF] \(member): extraction failed")
+                    continue
+                }
+                let text = String(data: data, encoding: .utf8) ?? ""
+                let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+                log("[Inspect3MF] \(member): \(data.count) bytes, \(lines.count) lines")
+                log("[Inspect3MF] \(member) first 25 lines:")
+                for line in lines.prefix(25) { log("    \(line)") }
+                let layerChangeCount = lines.filter { $0.contains("LAYER_CHANGE") }.count
+                log("[Inspect3MF] \(member): \(layerChangeCount) lines containing LAYER_CHANGE")
+                if let firstLayerChangeIdx = lines.firstIndex(where: { $0.contains("LAYER_CHANGE") }) {
+                    let around = lines[firstLayerChangeIdx..<min(firstLayerChangeIdx + 15, lines.count)]
+                    log("[Inspect3MF] \(member) around first LAYER_CHANGE:")
+                    for line in around { log("    \(line)") }
+                }
+            }
+            flush()
+            exit(0)
+        }
+
         let state = AppState()
         _appState = StateObject(wrappedValue: state)
 
@@ -134,6 +221,20 @@ struct OBSAssistantsApp: App {
                 }
             } else if state.settings.isConfigured {
                 state.connectPrinter()
+            }
+
+            // Diagnostic-only: starts the "Preview 3D" server right away
+            // instead of waiting for a manual click in the menu — used to
+            // verify /preview.png and /overlay.html serve real bytes end-to-
+            // end without driving the SwiftUI menu-bar UI by hand. Every
+            // overlay server still starts stopped by default for a real
+            // launch; this is purely a testing shortcut. Same dual env-var-
+            // or-UserDefaults trigger as OA_INSPECT_3MF, for the same
+            // reason (a plain `open` launch doesn't forward env vars).
+            if ProcessInfo.processInfo.environment["OA_START_PREVIEW_SERVER"] == "1"
+                || UserDefaults.standard.bool(forKey: "OAStartPreviewServerPending") {
+                UserDefaults.standard.removeObject(forKey: "OAStartPreviewServerPending")
+                state.startPreviewServer()
             }
         }
     }

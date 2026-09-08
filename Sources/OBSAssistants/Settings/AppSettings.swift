@@ -75,6 +75,12 @@ final class AppSettings: ObservableObject {
     @Published var studioHttpPort: Int {
         didSet { defaults.set(studioHttpPort, forKey: Keys.studioHttpPort) }
     }
+    /// Own port for the "Preview 3D" source (4th overlay — the sliced-plate
+    /// render Bambu Studio already produces) — same independent-listener
+    /// reasoning as `studioHttpPort`.
+    @Published var previewHttpPort: Int {
+        didSet { defaults.set(previewHttpPort, forKey: Keys.previewHttpPort) }
+    }
 
     @Published var overlayTheme: String {
         didSet { defaults.set(overlayTheme, forKey: Keys.overlayTheme) }
@@ -258,6 +264,7 @@ final class AppSettings: ObservableObject {
         static let clientCertPasswordAccount = "clientCertPassword"
         static let httpPort = "httpPort"
         static let studioHttpPort = "studioHttpPort"
+        static let previewHttpPort = "previewHttpPort"
         static let overlayTheme = "overlayTheme"
         static let studioOverlayTheme = "studioOverlayTheme"
         static let overlayTextScale = "overlayTextScale"
@@ -303,6 +310,7 @@ final class AppSettings: ObservableObject {
         clientCertPassword = KeychainHelper.get(account: Self.keychainAccount(Keys.clientCertPasswordAccount)) ?? ""
         httpPort = defaults.object(forKey: Keys.httpPort) as? Int ?? 8090
         studioHttpPort = defaults.object(forKey: Keys.studioHttpPort) as? Int ?? 8091
+        previewHttpPort = defaults.object(forKey: Keys.previewHttpPort) as? Int ?? 8092
         overlayTheme = defaults.string(forKey: Keys.overlayTheme) ?? "dark"
         studioOverlayTheme = defaults.string(forKey: Keys.studioOverlayTheme) ?? "dark"
         overlayTextScale = defaults.object(forKey: Keys.overlayTextScale) as? Double ?? 1.0
@@ -441,5 +449,14 @@ final class AppSettings: ObservableObject {
     /// the menu independently of the printer overlay's server too.
     var studioObsURL: String {
         "http://127.0.0.1:\(studioHttpPort)/overlay.html"
+    }
+
+    /// The "Preview 3D" overlay's URL — its own independent listener on
+    /// `previewHttpPort`, showing the sliced-plate render Bambu Studio
+    /// already produces for the same `.3mf` `studioObsURL` reads slicing
+    /// details from. Add as a 4th, independently-positioned Browser Source
+    /// if you want the option to show the expected result on stream.
+    var previewObsURL: String {
+        "http://127.0.0.1:\(previewHttpPort)/overlay.html"
     }
 }

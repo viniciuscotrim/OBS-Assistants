@@ -1,9 +1,9 @@
 # OBS Assistants
 
-App de menu bar para macOS (SwiftUI, menu-bar-only / `LSUIElement`) com três
-overlays locais independentes para **OBS Browser Source** — cada um com seu
-próprio servidor HTTP embutido, sua própria porta, e seu próprio Start/Stop,
-todos rodando juntos no mesmo processo/ícone da barra de menu.
+App de menu bar para macOS (SwiftUI, menu-bar-only / `LSUIElement`) com
+quatro overlays locais independentes para **OBS Browser Source** — cada um
+com seu próprio servidor HTTP embutido, sua própria porta, e seu próprio
+Start/Stop, todos rodando juntos no mesmo processo/ícone da barra de menu.
 
 **Created by Vinicius Cotrim.**
 
@@ -17,17 +17,19 @@ Releases hoje; Mac App Store futuramente).
 
 ---
 
-## Os três overlays
+## Os quatro overlays
 
 | Overlay | O que mostra | Fonte dos dados | Porta padrão |
 |---|---|---|---|
 | **Impressora** | Status de impressão da Bambu Lab (progresso, temperaturas, câmara, filamento, secagem do AMS…) | MQTT direto na impressora (rede local, porta 8883) | `8090` |
 | **Bambu Studio** | Detalhes de fatiamento (altura de camada, paredes, infill… ~470 campos) | Arquivo `.3mf` mais recente numa pasta local | `8091` |
+| **Preview 3D** | Render do plate fatiado — o "resultado esperado" da impressão | Mesmo `.3mf` acima (imagem já embutida por ele) | `8092` |
 | **Now Playing** | Faixa em reprodução no Music.app (capa, progresso, marquee), com opção de transmitir o áudio real pro OBS | AppleScript (Music.app) | `8080` |
 
-Todos os três servidores **começam parados** quando o app abre — você inicia
-só o(s) que for realmente usar naquela sessão de stream, pelo menu da barra
-("Servidores") ou pela própria janela de configurações de cada overlay.
+Todos os quatro servidores **começam parados** quando o app abre — você
+inicia só o(s) que for realmente usar naquela sessão de stream, pelo menu da
+barra ("Servidores") ou pela própria janela de configurações de cada
+overlay.
 
 ## Como usar
 
@@ -45,7 +47,7 @@ só o(s) que for realmente usar naquela sessão de stream, pelo menu da barra
    tema, campos visíveis, campos combinados, e tudo mais específico daquele
    overlay.
 4. No OBS: Fontes → + → Browser Source → cole a URL copiada → marque fundo
-   transparente (já é transparente por padrão nos três).
+   transparente (já é transparente por padrão nos quatro).
 
 ### Permissões que o macOS vai pedir
 
@@ -133,6 +135,29 @@ relatório MQTT da impressora nunca inclui esses detalhes.
   nada é compartilhado entre os dois, cada um tem seu próprio conjunto.
 - Servidor HTTP próprio (porta independente, ver tabela acima) — pode rodar
   como uma segunda Browser Source posicionada separadamente no OBS.
+
+## Overlay: Preview 3D
+
+Mostra o render do plate que o próprio Bambu Studio já gera ao fatiar
+(`Metadata/plate_1.png`, dentro do mesmo `.3mf` que o overlay Bambu Studio
+lê) — o "aqui está o resultado esperado" antes/durante a impressão. Reusa a
+**mesma pasta** configurada no overlay Bambu Studio (nada novo pra apontar) e
+atualiza sozinho nos mesmos gatilhos (novo job, pasta trocada, timer de 20s).
+
+Sem pasta configurada, ou se o `.3mf` mais recente não tiver nenhuma das
+imagens candidatas, o overlay mostra um placeholder discreto ("nenhuma
+prévia disponível") em vez de ficar com uma imagem antiga na tela — mesma
+disciplina do overlay Bambu Studio.
+
+🚧 **Só a imagem estática, não um toolpath ao vivo acompanhando a
+impressão.** Investigamos isso: uma `.3mf` salva normalmente ("Save
+Project") não tem G-code embutido — só a malha 3D e as imagens já
+renderizadas (`plate_1.png`/`top_1.png`/`pick_1.png`), confirmado inspecionando
+um projeto real (2026-09-08). Um render 3D progressivo (revelando o modelo
+conforme o progresso via um plano de corte em Z) é possível a partir da
+malha real embutida, mas fica pra uma versão futura — ver
+[issue #3](https://github.com/viniciuscotrim/OBS-Assistants/issues/3) se
+quiser acompanhar ou puxar isso mais cedo.
 
 ## Overlay: Now Playing (Music.app)
 
