@@ -355,7 +355,21 @@ final class AppState: ObservableObject {
             refreshPreviewImage()
             return
         }
-        studioRawFields = info.fields
+        var fields = info.fields
+        // "Tempo Total Estimado" — the value Bambu Studio itself computed
+        // at slice time (Metadata/slice_info.config's "prediction"), not
+        // something derived from live MQTT progress. Only added when
+        // present — see readNewestTotalPrintTimeSeconds's doc comment for
+        // why a given .3mf might not have it (e.g. a downloaded "sliced
+        // profile" rather than one you sliced+saved yourself).
+        if let seconds = BambuStudioProjectReader.readNewestTotalPrintTimeSeconds(inFolder: settings.studioProjectFolderPath) {
+            fields.append(FieldEntry(
+                key: "studio.total_print_time",
+                label: "Tempo Total Estimado",
+                value: BambuStudioProjectReader.formatDuration(seconds: seconds)
+            ))
+        }
+        studioRawFields = fields
         studioProjectFileName = info.fileName
         studioProjectReadAt = info.modifiedAt
         recomputeStudioFields()

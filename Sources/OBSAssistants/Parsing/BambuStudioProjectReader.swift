@@ -51,6 +51,69 @@ enum BambuStudioProjectReader {
         return nil
     }
 
+    /// The **total estimated print time** — Bambu Studio computes this at
+    /// slice time and writes it into `Metadata/slice_info.config` under
+    /// `<plate><metadata key="prediction" value="<seconds>"/></plate>` —
+    /// confirmed against BambuStudio's own open-source code
+    /// (`bbs_3mf.cpp`, the `"prediction"` string literal it writes/reads),
+    /// not guessed. This is the literal value Studio's own UI shows when a
+    /// print starts — unlike the printer's MQTT report, which only ever
+    /// exposes a live-counting-down *remaining* time
+    /// (`print.mc_remaining_time`), never the original total.
+    ///
+    /// Not every `.3mf` has it: a "sliced profile" downloaded pre-packaged
+    /// (as opposed to freshly sliced + saved locally in your own Studio)
+    /// can have an empty/header-only `slice_info.config` with no `<plate>`
+    /// block at all — confirmed on a real MakerWorld download (2026-09-08).
+    /// Slice the plate yourself and save the project for this to appear.
+    static func readNewestTotalPrintTimeSeconds(inFolder folderPath: String) -> TimeInterval? {
+        guard let fileURL = newestProjectFile(inFolder: folderPath),
+              let data = extractMember(from: fileURL, member: "Metadata/slice_info.config") else { return nil }
+        let parser = XMLParser(data: data)
+        let delegate = SliceInfoPredictionDelegate()
+        parser.delegate = delegate
+        parser.parse()
+        return delegate.predictionSeconds
+    }
+
+    /// "8130" (seconds) -> "2h 15m" — same spirit as `humanize`, just for a
+    /// duration instead of a snake_case key. Minutes-only under an hour
+    /// (e.g. "45m"), matching how the existing "Progresso + Tempo Restante"
+    /// composite already shows `mc_remaining_time` (plain minutes, no
+    /// seconds) — nothing here needs second-level precision.
+    static func formatDuration(seconds: TimeInterval) -> String {
+        let totalMinutes = Int((seconds / 60).rounded())
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
+    }
+
+    /// SAX delegate for the narrow read above — `slice_info.config`'s
+    /// `<plate>` metadata is just a flat list of self-closing
+    /// `<metadata key="..." value="..."/>` elements, so a full parse is
+    /// only ever looking for one attribute pair; `XMLParser` (stdlib, no
+    /// dependency) is still used over a regex scan for correctness against
+    /// XML escaping/attribute-order variance.
+    private final class SliceInfoPredictionDelegate: NSObject, XMLParserDelegate {
+        private(set) var predictionSeconds: TimeInterval?
+        private var insidePlate = false
+
+        func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String: String] = [:]) {
+            if elementName == "plate" {
+                insidePlate = true
+            } else if insidePlate, elementName == "metadata",
+                      attributeDict["key"] == "prediction",
+                      let raw = attributeDict["value"],
+                      let seconds = TimeInterval(raw) {
+                predictionSeconds = seconds
+            }
+        }
+
+        func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
+            if elementName == "plate" { insidePlate = false }
+        }
+    }
+
     struct ProjectInfo {
         let fileName: String
         let modifiedAt: Date
