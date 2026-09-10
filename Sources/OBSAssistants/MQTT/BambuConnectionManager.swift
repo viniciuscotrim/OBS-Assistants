@@ -79,6 +79,12 @@ final class BambuConnectionManager {
     private var usingFallback = false
     private var reconnectTimer: DispatchSourceTimer?
     private let reconnectQueue = DispatchQueue(label: "com.obsassistants.reconnect")
+    /// Independent 60s safety-net timer — see `armWatchdog`'s doc comment.
+    private var watchdogTimer: DispatchSourceTimer?
+    /// Set by `start()`/`stop()` — tracks whether a live connection is
+    /// actually wanted right now, so the watchdog below never fights an
+    /// explicit "Desconectar" by reconnecting behind the user's back.
+    private var shouldStayConnected = false
 
     init() {
         client.onStateChange = { [weak self] state in
@@ -94,15 +100,20 @@ final class BambuConnectionManager {
             status = .failed("Configure IP, serial e Access Code primeiro")
             return
         }
+        shouldStayConnected = true
         reportStore.reset()
         usingFallback = false
         status = .connecting
         connectPrimary()
+        armWatchdog()
     }
 
     func stop() {
+        shouldStayConnected = false
         reconnectTimer?.cancel()
         reconnectTimer = nil
+        watchdogTimer?.cancel()
+        watchdogTimer = nil
         client.disconnect()
         status = .disconnected
     }
@@ -169,15 +180,63 @@ final class BambuConnectionManager {
         }
     }
 
+    /// Reconnect delay after losing the connection — was a fixed 10s,
+    /// which (root-caused 2026-09-10 via packet-level MQTT logging) turned
+    /// a completely benign, recurring pattern into a very visible one: the
+    /// printer's own local broker cleanly closes the TCP connection (clean
+    /// FIN, no MQTT error) after a short burst of status reports (~7
+    /// messages, ~9s) — happens *every single cycle*, indefinitely, and
+    /// isn't caused by anything this app sends/doesn't send (confirmed:
+    /// QoS 0 publishes throughout, so it isn't an unacked-message issue
+    /// either). Reconnecting always works fine — the actual problem was
+    /// just that a 10s gap every ~9s of connected time reads as "keeps
+    /// losing the printer" over the course of a whole print, when it's
+    /// really the printer cycling its own session on a schedule the
+    /// official Bambu apps most likely just reconnect through invisibly.
+    /// A short, fixed delay (not exponential backoff — deliberately, so a
+    /// real print never needs a manual reconnect) keeps this near-invisible
+    /// without hammering a connection attempt in a tight loop.
+    private static let reconnectDelay: TimeInterval = 3
+
     private func scheduleReconnect() {
         reconnectTimer?.cancel()
         let timer = DispatchSource.makeTimerSource(queue: reconnectQueue)
-        timer.schedule(deadline: .now() + 10)
+        timer.schedule(deadline: .now() + Self.reconnectDelay)
         timer.setEventHandler { [weak self] in
             self?.start()
         }
         timer.resume()
         reconnectTimer = timer
+    }
+
+    /// Belt-and-suspenders on top of `scheduleReconnect` — requested after
+    /// real, multi-hour print sessions needed manual reconnects more than
+    /// this app's own disconnect-driven retry should ever allow. Runs
+    /// independently for as long as a connection is wanted (`start()` was
+    /// called, `stop()` wasn't): every 60s, if status isn't actually
+    /// connected or mid-attempt, forces a fresh `start()` — catches
+    /// anything `scheduleReconnect` might miss (a lost/cancelled timer, a
+    /// `.connecting` state that never resolved, a timer left suspended
+    /// across a Mac sleep/wake cycle) without waiting on that path at all.
+    /// Keeps retrying forever by design — only a real network outage or the
+    /// printer leaving the LAN should ever make this stop finding it again,
+    /// never something the user has to notice and act on themselves.
+    private func armWatchdog() {
+        guard watchdogTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: reconnectQueue)
+        timer.schedule(deadline: .now() + 60, repeating: 60)
+        timer.setEventHandler { [weak self] in
+            guard let self, self.shouldStayConnected else { return }
+            switch self.status {
+            case .connectedPrimary, .connectedFallback, .connecting:
+                return
+            default:
+                print("[Watchdog] status: \(self.status) — forcing reconnect")
+                self.start()
+            }
+        }
+        timer.resume()
+        watchdogTimer = timer
     }
 
     /// Asks the printer for a full status dump rather than waiting for

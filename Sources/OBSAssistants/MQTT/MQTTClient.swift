@@ -139,6 +139,13 @@ final class MQTTClient {
                 return
             }
             if isComplete {
+                // Confirmed (2026-09-10, packet-level logging) this is
+                // routinely the *printer's own* local broker cleanly
+                // closing the connection every ~9s/~7 reports — not a
+                // network error, and not caused by anything this client
+                // does differently (QoS 0 throughout). See
+                // BambuConnectionManager.scheduleReconnect's doc comment
+                // for how the reconnect side handles this.
                 self.state = .disconnected
                 self.teardown()
                 return

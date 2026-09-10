@@ -46,6 +46,23 @@ set -euo pipefail
 NOTARY_PROFILE="OBSAssistantsNotary"
 ENTITLEMENTS="Sources/OBSAssistants/App/OBSAssistants.entitlements"
 
+# Command Line Tools 27.0 (installed 2026-09-10) ships a macOS 27.0 SDK
+# whose SwiftUI module requires an external "SwiftUIMacros" compiler
+# plugin (for @State/@Binding/etc., now macro-based) that only ships
+# inside full Xcode.app — not present in a bare CLT install, which is all
+# this machine has. Building against that default SDK fails on every
+# single @State declaration in the app ("external macro implementation
+# type 'SwiftUIMacros.StateMacro' could not be found"). The CLT install
+# still carries the previous SDK (26.5) alongside the new one, and that
+# one doesn't need the macro plugin — so pin SDKROOT to it explicitly
+# rather than whatever `xcrun` picks by default. If this path stops
+# existing after some future CLT update, either a newer SDK here has
+# fixed the missing plugin (drop this override and confirm a plain
+# `swift build` works again) or a full Xcode.app install is needed.
+if [ -d "/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk" ]; then
+    export SDKROOT="/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk"
+fi
+
 SIGNING_IDENTITY=""
 HARDENED_RUNTIME=false
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "Developer ID Application"; then

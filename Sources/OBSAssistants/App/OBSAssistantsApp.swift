@@ -40,6 +40,34 @@ struct OBSAssistantsApp: App {
             exit(0)
         }
 
+        // Diagnostic-only: reads the *real* (production, non-".testing")
+        // Keychain account directly via KeychainHelper — bypasses
+        // AppSettings entirely, since OA_KEYCHAIN_TEST above deliberately
+        // reroutes to an isolated ".testing" account (so it can never be
+        // used to check the real saved value). Same env-var-or-UserDefaults
+        // dual trigger as OA_INSPECT_3MF, logged to a file for the same
+        // reason (a plain `open` launch has no attached terminal, and — see
+        // OA_INSPECT_3MF's own comment — is also the only way this runs as
+        // its own top-level process instead of being attributed to
+        // whatever launched it, which matters for Keychain ACL checks same
+        // as it does for folder TCC).
+        let keychainRealCheckRequested = ProcessInfo.processInfo.environment["OA_KEYCHAIN_REAL_CHECK"] == "1"
+            || UserDefaults.standard.bool(forKey: "OAKeychainRealCheckPending")
+        if keychainRealCheckRequested {
+            UserDefaults.standard.removeObject(forKey: "OAKeychainRealCheckPending")
+            var lines: [String] = []
+            func log(_ s: String) { print(s); lines.append(s) }
+            log("[KeychainRealCheck] reading account \"accessCode\" directly (production, not .testing)")
+            let value = KeychainHelper.get(account: "accessCode")
+            if let value {
+                log("[KeychainRealCheck] SUCCESS: \(value.count) chars")
+            } else {
+                log("[KeychainRealCheck] returned nil — see any \"[Keychain]\" line above for the real OSStatus/reason, or \"operation timed out\" if it hung")
+            }
+            try? lines.joined(separator: "\n").write(to: URL(fileURLWithPath: "/tmp/oa_keychain_real_check.log"), atomically: true, encoding: .utf8)
+            exit(0)
+        }
+
         // Diagnostic-only: inspects the real internal structure of the
         // newest .3mf in the configured Studio project folder — lists every
         // ZIP member, then dumps stats + a preview of any Metadata/plate_*.gcode
@@ -262,6 +290,43 @@ struct OBSAssistantsApp: App {
                 || UserDefaults.standard.bool(forKey: "OAStartPreviewServerPending") {
                 UserDefaults.standard.removeObject(forKey: "OAStartPreviewServerPending")
                 state.startPreviewServer()
+            }
+
+            // Diagnostic-only: logs every connectionStatus transition (with
+            // the human-readable `.failed(reason)` text when it fails) to a
+            // file over ~25s, then exits — used to see *why* connectPrinter()
+            // isn't reaching connectedPrimary/connectedFallback without
+            // having to open the popover and read it off the UI by hand.
+            if ProcessInfo.processInfo.environment["OA_CONNECT_DIAG"] == "1"
+                || UserDefaults.standard.bool(forKey: "OAConnectDiagPending") {
+                UserDefaults.standard.removeObject(forKey: "OAConnectDiagPending")
+                var lines: [String] = []
+                func log(_ s: String) { print(s); lines.append(s) }
+                func flush() {
+                    try? lines.joined(separator: "\n").write(to: URL(fileURLWithPath: "/tmp/oa_connect_diag.log"), atomically: true, encoding: .utf8)
+                }
+                log("[ConnectDiag] isConfigured=\(state.settings.isConfigured) ip=\(state.settings.printerIP) serial=\(state.settings.printerSerial) accessCodeChars=\(state.settings.accessCode.count)")
+                if !state.settings.isConfigured {
+                    flush()
+                    exit(0)
+                }
+                state.connectPrinter()
+                Task {
+                    var lastStatus = ""
+                    for elapsed in 0..<90 {
+                        try? await Task.sleep(nanoseconds: 1_000_000_000)
+                        await MainActor.run {
+                            let current = "\(state.connectionStatus)"
+                            if current != lastStatus {
+                                log("[ConnectDiag] t+\(elapsed + 1)s status: \(current)")
+                                lastStatus = current
+                            }
+                            flush()
+                        }
+                    }
+                    await MainActor.run { flush() }
+                    exit(0)
+                }
             }
         }
     }
