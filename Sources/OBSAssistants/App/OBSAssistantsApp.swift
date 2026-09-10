@@ -291,6 +291,20 @@ struct OBSAssistantsApp: App {
                 UserDefaults.standard.removeObject(forKey: "OAStartPreviewServerPending")
                 state.startPreviewServer()
             }
+            // Same diagnostic-only pattern, for restoring the printer/Studio
+            // servers after a debugging session restarted the app (they
+            // don't auto-start by design — see AppState's doc comment — so
+            // a killed-and-relaunched app otherwise leaves whatever OBS
+            // sources were already pointed at them dead until manually
+            // started again from the menu).
+            if UserDefaults.standard.bool(forKey: "OAStartPrinterServerPending") {
+                UserDefaults.standard.removeObject(forKey: "OAStartPrinterServerPending")
+                state.startServer()
+            }
+            if UserDefaults.standard.bool(forKey: "OAStartStudioServerPending") {
+                UserDefaults.standard.removeObject(forKey: "OAStartStudioServerPending")
+                state.startStudioServer()
+            }
 
             // Diagnostic-only: logs every connectionStatus transition (with
             // the human-readable `.failed(reason)` text when it fails) to a
